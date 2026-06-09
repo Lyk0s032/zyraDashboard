@@ -1,12 +1,16 @@
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 
 function TokenDebugger() {
+  const location = useLocation();
   const [tokenInfo, setTokenInfo] = useState(null);
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
     checkToken();
   }, []);
+
+  const ocultoEnStudio = location.pathname === '/web-config';
 
   const checkToken = () => {
     const token = localStorage.getItem('token');
@@ -64,6 +68,8 @@ function TokenDebugger() {
       alert('Token eliminado. Recarga la página.');
     }
   };
+
+  if (ocultoEnStudio) return null;
 
   if (!visible) {
     return (

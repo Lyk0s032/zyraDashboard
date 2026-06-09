@@ -3,7 +3,6 @@ import { RainModeProvider } from './estados/RainModeContext';
 import { AccessibilityProvider } from './estados/AccessibilityContext';
 import { CourtBlockProvider } from './estados/CourtBlockContext';
 import AppRouter from './AppRouter';
-import TokenDebugger from './componentes/TokenDebugger';
 import './App.css';
 
 function App() {
@@ -13,7 +12,6 @@ function App() {
         <CourtBlockProvider>
           <RainModeProvider>
             <AppRouter />
-            <TokenDebugger />
           </RainModeProvider>
         </CourtBlockProvider>
       </AccessibilityProvider>

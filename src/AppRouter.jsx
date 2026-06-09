@@ -7,6 +7,7 @@ import DetalleComplejo from './componentes/DetalleComplejo';
 import NotFound from './componentes/NotFound';
 import ProtectedRoute from './componentes/ProtectedRoute';
 import PublicRoute from './componentes/PublicRoute';
+import TokenDebugger from './componentes/TokenDebugger';
 
 function AppLayout() {
   const location = useLocation();
@@ -22,6 +23,7 @@ function AppLayout() {
   return (
     <>
       {!hideNavbar && <Navbar />}
+      <TokenDebugger />
       <Routes>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route

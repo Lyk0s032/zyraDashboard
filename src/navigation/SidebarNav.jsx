@@ -23,10 +23,8 @@ function SidebarNav({
 
         return (
           <div key={id}>
-            <button
-              type="button"
-              onClick={() => onSelectNav(id)}
-              className={`group w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs transition-all duration-300 ${
+            <div
+              className={`group flex w-full items-center gap-3 rounded-lg text-xs transition-all duration-300 ${
                 isActive
                   ? isLight
                     ? 'bg-slate-200/60 text-emerald-600 font-medium'
@@ -36,28 +34,36 @@ function SidebarNav({
                     : 'text-[#6b6b7b] hover:text-white hover:bg-white/[0.04]'
               }`}
             >
-              <Icon
-                {...ICON_PROPS}
-                className={`shrink-0 transition-colors duration-300 ${
-                  isActive
-                    ? isLight
-                      ? 'text-emerald-600'
-                      : 'text-white'
-                    : isLight
-                      ? 'text-slate-500 group-hover:text-slate-700'
-                      : 'text-[#6b6b7b] group-hover:text-white'
-                }`}
-              />
-              <span className="flex-1 text-left">{id}</span>
+              <button
+                type="button"
+                onClick={() => onSelectNav(id)}
+                className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2 text-left"
+              >
+                <Icon
+                  {...ICON_PROPS}
+                  className={`shrink-0 transition-colors duration-300 ${
+                    isActive
+                      ? isLight
+                        ? 'text-emerald-600'
+                        : 'text-white'
+                      : isLight
+                        ? 'text-slate-500 group-hover:text-slate-700'
+                        : 'text-[#6b6b7b] group-hover:text-white'
+                  }`}
+                />
+                <span className="flex-1 text-left">{id}</span>
+              </button>
 
               {isCanchas && (
-                <ExpandAddButton
-                  expanded={isActive}
-                  onAdd={() => onAddCourt?.()}
-                  addLabel="Añadir nueva cancha"
-                />
+                <span className="pr-3">
+                  <ExpandAddButton
+                    expanded={isActive}
+                    onAdd={() => onAddCourt?.()}
+                    addLabel="Añadir nueva cancha"
+                  />
+                </span>
               )}
-            </button>
+            </div>
 
             {isCanchas && isActive && (
               <CanchasSubmenu

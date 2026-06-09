@@ -9,7 +9,7 @@ import PrincipalDashboard from './principal/principalDashboard';
 import Members from './miembros/members';
 import Finance from './finanzas/finance';
 import Billing from './billing/billing';
-import WebConfig from './webConfig/webConfig';
+import LandingPageDashboard from './siteWeb/landingPageDashboard';
 import AskZyraChat from './AskZyraChat';
 import HotEdgeSidebar from './HotEdgeSidebar';
 import RainEffect, { LUXURY_STORM_GLASS } from './RainEffect';
@@ -208,6 +208,11 @@ function Dashboard() {
         <div className="pointer-events-none fixed inset-0 z-[1] luxury-thunder-overlay" aria-hidden="true" />
       )}
 
+      {isWebConfigRoute ? (
+        <div className="relative z-10 h-full w-full min-h-0 overflow-hidden">
+          <LandingPageDashboard />
+        </div>
+      ) : (
       <div className="relative z-10 grid h-full w-full min-h-0 grid-cols-[auto_1fr] overflow-hidden">
 
       <Sidebar
@@ -259,8 +264,6 @@ function Dashboard() {
               <Finance />
             ) : isBillingRoute ? (
               <Billing />
-            ) : isWebConfigRoute ? (
-              <WebConfig />
             ) : (
               <PrincipalDashboard />
             )}
@@ -271,12 +274,13 @@ function Dashboard() {
       </main>
 
       </div>
+      )}
 
 
 
-      <AskZyraChat />
+      {!isWebConfigRoute && <AskZyraChat />}
 
-      <HotEdgeSidebar />
+      {!isWebConfigRoute && <HotEdgeSidebar />}
 
     </div>
 
