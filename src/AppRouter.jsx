@@ -8,11 +8,15 @@ import NotFound from './componentes/NotFound';
 import ProtectedRoute from './componentes/ProtectedRoute';
 import PublicRoute from './componentes/PublicRoute';
 import TokenDebugger from './componentes/TokenDebugger';
+import LandingPage from './componentes/landing/LandingPage';
+import Privacidad from './componentes/landing/Privacidad';
+
+const PUBLIC_SHELL_PATHS = ['/', '/signIn', '/login', '/privacidad'];
 
 function AppLayout() {
   const location = useLocation();
   const hideNavbar =
-    location.pathname === '/login' ||
+    PUBLIC_SHELL_PATHS.includes(location.pathname) ||
     location.pathname.startsWith('/dashboard') ||
     location.pathname.startsWith('/canchas') ||
     location.pathname === '/members' ||
@@ -25,9 +29,11 @@ function AppLayout() {
       {!hideNavbar && <Navbar />}
       <TokenDebugger />
       <Routes>
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/privacidad" element={<Privacidad />} />
+        <Route path="/login" element={<Navigate to="/signIn" replace />} />
         <Route
-          path="/login"
+          path="/signIn"
           element={
             <PublicRoute>
               <Login />

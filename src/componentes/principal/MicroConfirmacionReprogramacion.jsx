@@ -25,6 +25,7 @@ export default function MicroConfirmacionReprogramacion({
   const [estiloPanel, setEstiloPanel] = useState(null);
   const [backdropVisible, setBackdropVisible] = useState(false);
   const [cerrando, setCerrando] = useState(false);
+  const [motivo, setMotivo] = useState('');
 
   const cerrarConAnimacion = useCallback(
     (accion) => {
@@ -45,8 +46,8 @@ export default function MicroConfirmacionReprogramacion({
   );
 
   const handleConfirmar = useCallback(
-    () => cerrarConAnimacion(onConfirmar),
-    [cerrarConAnimacion, onConfirmar],
+    () => cerrarConAnimacion(() => onConfirmar(motivo)),
+    [cerrarConAnimacion, onConfirmar, motivo],
   );
 
   useLayoutEffect(() => {
@@ -126,6 +127,19 @@ export default function MicroConfirmacionReprogramacion({
         <p className="mt-1.5 text-[11px] leading-snug text-slate-400">{detalle}</p>
 
         {notaTarifa}
+
+        <div className="mt-3">
+          <label className="mb-1 block text-[10px] font-medium text-slate-500">
+            Motivo (opcional)
+          </label>
+          <input
+            type="text"
+            value={motivo}
+            onChange={(e) => setMotivo(e.target.value)}
+            placeholder="Ej: Por lluvia, Mantenimiento..."
+            className="w-full rounded-lg border border-slate-700 bg-slate-900/50 px-2 py-1.5 text-[11px] text-white outline-none transition-colors placeholder:text-slate-600 focus:border-slate-500"
+          />
+        </div>
 
         <div className="mt-3 flex items-center gap-2">
           <button

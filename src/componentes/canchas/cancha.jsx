@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+﻿import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
   Star,
@@ -11,14 +11,20 @@ import {
   Plus,
   ChevronDown,
 } from 'lucide-react';
-import { CANCHAS_POR_DEPORTE } from '../../navigation/canchasData';
 import { FilterBar } from '../../navigation';
 import SeccionPrecios from './precios';
 import SeccionActividad from './actividad';
+import SeccionReservas from './reservas';
 import { useRainMode } from '../../estados/RainModeContext';
 import { useAccessibility } from '../../estados/AccessibilityContext';
 import { useCourtBlock } from '../../estados/CourtBlockContext';
 import { LUXURY_STORM_GLASS } from '../RainEffect';
+import { useAppContext } from '../../estados/AppContext';
+import { updateCanchaNombre, updateCanchaEstado } from '../../estados/actions';
+import axiosInstance from '../../api/axiosConfig';
+import FormularioReservaManual from '../principal/FormularioReservaManual';
+import HistorialCliente from '../principal/HistorialCliente';
+import { Banknote, Smartphone, ArrowLeftRight, Clock } from 'lucide-react';
 
 const PESTANAS = ['General', 'Reservas', 'Precios', 'Actividad'];
 
@@ -29,88 +35,14 @@ const RUTAS_PESTANA = {
   Actividad: 'actividad',
 };
 
-
-const RANGOS_FECHA = [
-  { id: 'semana', etiqueta: 'Esta semana' },
-  { id: '30dias', etiqueta: 'Últimos 30 días' },
-  { id: 'mes', etiqueta: 'Mes actual' },
-];
-
-function crearFechaRelativa(diasDesdeHoy) {
-  const fecha = new Date();
-  fecha.setDate(fecha.getDate() + diasDesdeHoy);
-  fecha.setHours(0, 0, 0, 0);
-  return fecha;
-}
-
-const RESERVAS_PAGOS_MOCK = [
-  {
-    id: 1,
-    nombre: 'Juan Pablo Ortiz',
-    telefono: '+57 300 123 4567',
-    horario: 'Mañana, 6:00 PM - 2h',
-    reservaWeb: true,
-    valorTotal: 160000,
-    valorReservado: 32000,
-    pendientePagar: 128000,
-    fecha: crearFechaRelativa(1),
-  },
-  {
-    id: 2,
-    nombre: 'Laura Gómez',
-    telefono: '+57 301 778 3344',
-    horario: 'Hoy, 8:00 PM - 1h',
-    reservaWeb: true,
-    valorTotal: 80000,
-    valorReservado: 16000,
-    pendientePagar: 64000,
-    fecha: crearFechaRelativa(0),
-  },
-  {
-    id: 3,
-    nombre: 'Felipe Aristizábal',
-    telefono: '+57 310 987 6543',
-    horario: 'Hoy, 5:00 PM - 1h',
-    reservaWeb: false,
-    valorTotal: 80000,
-    valorReservado: 0,
-    pendientePagar: 80000,
-    fecha: crearFechaRelativa(0),
-  },
-  {
-    id: 4,
-    nombre: 'Santiago Ruiz',
-    telefono: '+57 318 220 9911',
-    horario: 'Ayer, 7:00 PM - 2h',
-    reservaWeb: true,
-    valorTotal: 160000,
-    valorReservado: 32000,
-    pendientePagar: 128000,
-    fecha: crearFechaRelativa(-1),
-  },
-  {
-    id: 5,
-    nombre: 'Camila Torres',
-    telefono: '+57 322 441 6677',
-    horario: 'Jueves, 9:00 PM - 1h',
-    reservaWeb: true,
-    valorTotal: 60000,
-    valorReservado: 12000,
-    pendientePagar: 48000,
-    fecha: crearFechaRelativa(3),
-  },
-  {
-    id: 6,
-    nombre: 'Diego Moreno',
-    telefono: '+57 305 889 2233',
-    horario: 'Sábado, 6:00 PM - 2h',
-    reservaWeb: false,
-    valorTotal: 160000,
-    valorReservado: 0,
-    pendientePagar: 160000,
-    fecha: crearFechaRelativa(5),
-  },
-];
+// Helper para extraer el ID numérico de canchaSlug (soporta "1" o "cancha-1")
+const extraerCanchaId = (canchaSlug) => {
+  if (!canchaSlug) return null;
+  // Si es solo un número, retornarlo directamente
+  if (/^\d+$/.test(canchaSlug)) return parseInt(canchaSlug);
+  // Si tiene el prefijo "cancha-", quitarlo
+  return parseInt(canchaSlug.replace('cancha-', ''));
+};
 
 const PERFILES_CLIENTES_MOCK = {
   '+57 300 123 4567': {
@@ -212,7 +144,7 @@ const PERFILES_CLIENTES_MOCK = {
     etiquetas: [
       { texto: '⚠️ 1 Cancelación Tardía', estilo: 'bg-yellow-500/10 text-yellow-300/90 border-yellow-500/20' },
     ],
-    notaInterna: 'Verificar identidad al llegar — reservas frecuentes sin anticipo',
+    notaInterna: 'Verificar identidad al llegar � reservas frecuentes sin anticipo',
     historial: [
       { fecha: '24 May 2026', cancha: 'Cancha Fútbol 5 B', estado: 'No asistió / Fake' },
       { fecha: '10 May 2026', cancha: 'Cancha Fútbol 5 A', estado: 'Canceló' },
@@ -223,6 +155,37 @@ const PERFILES_CLIENTES_MOCK = {
 
 function normalizarTelefono(telefono) {
   return telefono.replace(/\D/g, '');
+}
+
+// Buscar cliente en el backend usando la API real
+async function buscarClienteEnBackend(telefono, complejoId) {
+  const digits = normalizarTelefono(telefono);
+  if (digits.length < 10) return null;
+
+  try {
+    const token = localStorage.getItem('token');
+    const response = await axiosInstance.get(
+      `/api/reservas/historial-cliente/${digits}`,
+      {
+        params: { complejo_id: complejoId },
+        headers: { Authorization: `Bearer ${token}` }
+      }
+    );
+
+    if (response.data.success) {
+      const { cliente, estadisticas, historial } = response.data;
+      return {
+        cliente,
+        estadisticas,
+        historial,
+        esRegistrado: cliente.es_cliente_registrado
+      };
+    }
+  } catch (error) {
+    console.error('Error al buscar cliente:', error);
+  }
+  
+  return null;
 }
 
 function buscarPerfilPorTelefono(telefono) {
@@ -284,9 +247,9 @@ const CLASE_INPUT_ACORDEON =
 const DURACION_ANALISIS_CLIENTE_MS = 900;
 
 const PASOS_ANALISIS_CLIENTE = [
-  '🔍 Buscando número en la base de datos...',
-  '⚡ Escaneando historial de asistencia y alertas...',
-  '✨ Renderizando perfil deportivo...',
+  '�x� Buscando número en la base de datos...',
+  '�a� Escaneando historial de asistencia y alertas...',
+  '�S� Renderizando perfil deportivo...',
 ];
 
 const ESTILO_ESTADO_HISTORIAL = {
@@ -295,137 +258,8 @@ const ESTILO_ESTADO_HISTORIAL = {
   'No asistió / Fake': 'text-red-400/90 bg-red-400/10 border-red-400/15',
 };
 
-function obtenerPerfilCliente(reserva) {
-  const base = PERFILES_CLIENTES_MOCK[reserva.telefono] ?? {
-    miembroDesde: 'Reciente',
-    calificacion: 3.0,
-    etiquetas: [],
-    notaInterna: '',
-    historial: [
-      {
-        fecha: reserva.fecha.toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' }),
-        cancha: 'Cancha actual',
-        estado: 'Asistió',
-      },
-    ],
-  };
-
-  return {
-    nombre: reserva.nombre,
-    telefono: reserva.telefono,
-    ...base,
-  };
-}
-
-function telefonoWhatsApp(telefono) {
-  return telefono.replace(/\D/g, '');
-}
-
-function IconoWhatsApp({ className }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      className={className}
-      aria-hidden="true"
-    >
-      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.435 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
-    </svg>
-  );
-}
-
-const OCUPACION_POR_RANGO = {
-  semana: {
-    totalHoras: 42,
-    tendencia: [
-      { etiqueta: 'Lun', ocupacion: 58 },
-      { etiqueta: 'Mar', ocupacion: 72 },
-      { etiqueta: 'Mié', ocupacion: 65 },
-      { etiqueta: 'Jue', ocupacion: 81 },
-      { etiqueta: 'Vie', ocupacion: 88 },
-      { etiqueta: 'Sáb', ocupacion: 94 },
-      { etiqueta: 'Dom', ocupacion: 76 },
-    ],
-    bloques: [
-      { hora: '6 PM', reservas: 9 },
-      { hora: '7 PM', reservas: 14 },
-      { hora: '8 PM', reservas: 18 },
-      { hora: '9 PM', reservas: 12 },
-      { hora: '10 PM', reservas: 6 },
-    ],
-  },
-  '30dias': {
-    totalHoras: 168,
-    tendencia: [
-      { etiqueta: 'S1', ocupacion: 62 },
-      { etiqueta: 'S2', ocupacion: 68 },
-      { etiqueta: 'S3', ocupacion: 74 },
-      { etiqueta: 'S4', ocupacion: 71 },
-    ],
-    bloques: [
-      { hora: '6 PM', reservas: 32 },
-      { hora: '7 PM', reservas: 48 },
-      { hora: '8 PM', reservas: 55 },
-      { hora: '9 PM', reservas: 38 },
-      { hora: '10 PM', reservas: 19 },
-    ],
-  },
-  mes: {
-    totalHoras: 186,
-    tendencia: [
-      { etiqueta: 'Sem 1', ocupacion: 64 },
-      { etiqueta: 'Sem 2', ocupacion: 70 },
-      { etiqueta: 'Sem 3', ocupacion: 78 },
-      { etiqueta: 'Sem 4', ocupacion: 83 },
-      { etiqueta: 'Sem 5', ocupacion: 75 },
-    ],
-    bloques: [
-      { hora: '6 PM', reservas: 38 },
-      { hora: '7 PM', reservas: 52 },
-      { hora: '8 PM', reservas: 61 },
-      { hora: '9 PM', reservas: 44 },
-      { hora: '10 PM', reservas: 22 },
-    ],
-  },
-};
-
 function formatearCOP(valor) {
-  return `$${valor.toLocaleString('es-CO')} COP`;
-}
-
-function obtenerInicioSemana(fecha) {
-  const inicio = new Date(fecha);
-  const dia = inicio.getDay();
-  const diff = dia === 0 ? -6 : 1 - dia;
-  inicio.setDate(inicio.getDate() + diff);
-  inicio.setHours(0, 0, 0, 0);
-  return inicio;
-}
-
-function reservaEnRango(fechaReserva, rango) {
-  const hoy = new Date();
-  hoy.setHours(23, 59, 59, 999);
-  const fecha = new Date(fechaReserva);
-  fecha.setHours(12, 0, 0, 0);
-
-  if (rango === 'semana') {
-    const inicio = obtenerInicioSemana(hoy);
-    const fin = new Date(inicio);
-    fin.setDate(inicio.getDate() + 6);
-    fin.setHours(23, 59, 59, 999);
-    return fecha >= inicio && fecha <= fin;
-  }
-
-  if (rango === '30dias') {
-    const inicio = new Date(hoy);
-    inicio.setDate(hoy.getDate() - 29);
-    inicio.setHours(0, 0, 0, 0);
-    return fecha >= inicio && fecha <= hoy;
-  }
-
-  const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
-  const finMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0, 23, 59, 59, 999);
-  return fecha >= inicioMes && fecha <= finMes;
+  return `$${Number(valor || 0).toLocaleString('es-CO')} COP`;
 }
 
 const PESTANAS_PANEL = [
@@ -521,12 +355,14 @@ const CARACTERISTICAS_PREVIA = [
   { etiqueta: 'Capacidad de Espectadores', valor: '50 espectadores' },
 ];
 
-function obtenerNombreCancha(slug) {
-  const cancha = CANCHAS_POR_DEPORTE
-    .flatMap((d) => d.canchas)
-    .find((c) => c.id === slug);
-  if (cancha) return cancha.nombre;
-  return slug
+function obtenerNombreCancha(slug, canchasGlobales = []) {
+  // Buscar en el estado global (canchas de la BD)
+  if (canchasGlobales.length > 0) {
+    const cancha = canchasGlobales.find((c) => String(c.id) === String(slug));
+    if (cancha) return cancha.nombre;
+  }
+  // Fallback: capitalizar el slug (útil si las canchas aún no cargaron)
+  return String(slug)
     .split('-')
     .map((palabra) => palabra.charAt(0).toUpperCase() + palabra.slice(1))
     .join(' ');
@@ -546,17 +382,202 @@ function obtenerPestanaDesdeRuta(pathname, canchaSlug) {
   return 'General';
 }
 
-function obtenerFechaCali() {
+/** Retorna la fecha de hoy en Bogotá como "YYYY-MM-DD" */
+function fechaHoyBogota() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
+}
+
+/** Formatea "YYYY-MM-DD" como texto largo en español (Colombia) */
+function formatearFechaDisplay(fechaISO) {
+  const [y, m, d] = fechaISO.split('-').map(Number);
+  // Crear la fecha sin desfase de zona horaria
+  const fecha = new Date(y, m - 1, d);
   return new Intl.DateTimeFormat('es-CO', {
-    timeZone: 'America/Bogota',
     weekday: 'long',
     day: 'numeric',
     month: 'long',
     year: 'numeric',
-  }).format(new Date());
+  }).format(fecha);
+}
+
+/** Avanza o retrocede `delta` días sobre "YYYY-MM-DD" */
+function navegarDia(fechaISO, delta) {
+  const [y, m, d] = fechaISO.split('-').map(Number);
+  const fecha = new Date(y, m - 1, d + delta);
+  return [
+    fecha.getFullYear(),
+    String(fecha.getMonth() + 1).padStart(2, '0'),
+    String(fecha.getDate()).padStart(2, '0'),
+  ].join('-');
+}
+
+function obtenerFechaCali() {
+  return formatearFechaDisplay(fechaHoyBogota());
+}
+
+/**
+ * Convierte los horarios de operación + reservas de la API
+ * al formato de slots que usa la agenda visual.
+ * @param {Array} horarios  � [{ clave: "08:00", etiqueta: "8:00 AM" }]
+ * @param {Array} reservas  � array de reservas formateadas del backend
+ * @param {Object|null} cancha � info de la cancha (para el tipo de deporte)
+ */
+function buildAgendaFromAPI(horarios, reservas, cancha) {
+  return horarios.map((slot, idx) => {
+    const [hSlot, mSlot] = slot.clave.split(':').map(Number);
+    const minSlot = hSlot * 60 + mSlot;
+
+    // Buscar si alguna reserva cubre este bloque horario
+    const reserva = reservas.find((r) => {
+      const [hi, mi] = r.hora_inicio.split(':').map(Number);
+      const [hf, mf] = r.hora_fin.split(':').map(Number);
+      const minInicio = hi * 60 + mi;
+      const minFin = hf * 60 + mf;
+      return minSlot >= minInicio && minSlot < minFin;
+    });
+
+    if (reserva) {
+      return {
+        id: `slot-api-${reserva.id}-${idx}`,
+        hora: slot.etiqueta,
+        tipo: 'ocupada',
+        nombre: reserva.cliente?.nombre || 'Sin nombre',
+        deporte: obtenerEtiquetaDeporte(cancha?.tipo_deporte),
+        estadoPago: reserva.estado_pago_legible,
+        pagoPendiente: reserva.estado_pago !== 'PAGADA_TOTAL',
+        valorTotal: reserva.monto_total,
+        valorPagado: reserva.monto_abono,
+        valorPendiente: reserva.monto_total - reserva.monto_abono,
+      };
+    }
+
+    return {
+      id: `slot-libre-${idx}`,
+      hora: slot.etiqueta,
+      tipo: 'disponible',
+    };
+  });
 }
 
 const VALOR_RESERVA_DEFAULT = 60000;
+
+// ============================================
+// FUNCIONES PARA CARGA DE PRECIOS REALES
+// ============================================
+
+/**
+ * Obtiene el precio real de una franja horaria específica según día y hora
+ * @param {string} canchaSlug - ID de la cancha
+ * @param {string} fecha - Fecha en formato YYYY-MM-DD
+ * @param {string} hora - Hora en formato "8:00 AM"
+ * @param {number} duracion - Duración en minutos
+ * @returns {Promise<number>} - Precio calculado
+ */
+async function obtenerPrecioRealFranja(canchaSlug, fecha, hora, duracion = 60) {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) return VALOR_RESERVA_DEFAULT;
+
+    const canchaIdNumerico = extraerCanchaId(canchaSlug);
+    
+    const response = await axiosInstance.get(`/api/canchas/${canchaIdNumerico}/precios`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    const bloques = response.data.data?.bloques || response.data.bloques || [];
+    if (!response.data.success || !bloques.length) return VALOR_RESERVA_DEFAULT;
+
+    const [year, month, day] = fecha.split('-').map(Number);
+    const fechaObj = new Date(year, month - 1, day);
+    const diaSemana = fechaObj.getDay();
+    const horaMinutos = convertirHoraAMinutos(hora);
+    
+    const precioEncontrado = buscarPrecioEnBloques(bloques, diaSemana, horaMinutos, duracion);
+    return precioEncontrado || VALOR_RESERVA_DEFAULT;
+    
+  } catch (error) {
+    console.error('Error al obtener precio real:', error);
+    return VALOR_RESERVA_DEFAULT;
+  }
+}
+
+/**
+ * Convierte hora en formato "8:00 AM" a minutos desde medianoche
+ */
+function convertirHoraAMinutos(horaTexto) {
+  const match = horaTexto.match(/(\d+):(\d+)\s*(AM|PM)/i);
+  if (!match) return 0;
+  
+  const [, h, m, periodo] = match;
+  let horas = parseInt(h);
+  const minutos = parseInt(m);
+  
+  if (periodo.toUpperCase() === 'PM' && horas !== 12) {
+    horas += 12;
+  } else if (periodo.toUpperCase() === 'AM' && horas === 12) {
+    horas = 0;
+  }
+  
+  return horas * 60 + minutos;
+}
+
+/**
+ * Busca el precio correspondiente en los bloques de precios
+ */
+function buscarPrecioEnBloques(bloques, diaSemana, horaMinutos, duracion) {
+  for (const bloque of bloques) {
+    const diasBloque = bloque.dias || bloque.dias_semana || [];
+    const horariosBloque = bloque.horarios || bloque.franjas_horarias || [];
+    
+    const aplicaEsteBloque = diasBloque.some(dia => {
+      if (dia === 'Fes') return false;
+      return convertirDiaANumero(dia) === diaSemana;
+    });
+
+    if (!aplicaEsteBloque) continue;
+
+    for (const franja of horariosBloque) {
+      const inicioMinutos = convertirHoraStringAMinutos(franja.hora_inicio);
+      const finMinutos = convertirHoraStringAMinutos(franja.hora_fin);
+      
+      if (horaMinutos >= inicioMinutos && horaMinutos < finMinutos) {
+        const precioHora = franja.precio_hora || franja.precio_por_hora || 0;
+        return Math.round((precioHora * duracion) / 60);
+      }
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Convierte día de string a número (Lu=1, Ma=2, etc.)
+ */
+function convertirDiaANumero(diaString) {
+  const mapaDias = { 'Do': 0, 'Lu': 1, 'Ma': 2, 'Mi': 3, 'Ju': 4, 'Vi': 5, 'Sá': 6 };
+  return mapaDias[diaString] ?? 0;
+}
+
+/**
+ * Convierte hora en formato "HH:MM" a minutos desde medianoche
+ */
+function convertirHoraStringAMinutos(horaString) {
+  const [horas, minutos] = horaString.split(':').map(Number);
+  return horas * 60 + minutos;
+}
+
+// Constantes para el formulario mejorado
+const DURACIONES = [
+  { id: 60, label: '1 hora (60 min)', icon: Clock },
+  { id: 120, label: '2 horas (120 min)', icon: Clock },
+];
+
+const METODOS_PAGO = [
+  { id: 'NEQUI', label: 'Nequi', icon: Smartphone },
+  { id: 'TRANSFERENCIA', label: 'Transferencia', icon: ArrowLeftRight },
+  { id: 'EFECTIVO', label: 'Efectivo', icon: Banknote },
+];
+
 const ABONO_MINIMO_ALERTA_PORCENTAJE = 0.2;
 
 function calcularAbonoMinimoAlerta(precioHora) {
@@ -566,9 +587,11 @@ function calcularAbonoMinimoAlerta(precioHora) {
 function calcularDesglosePago(precioHora, tipoPago, montoAbonado) {
   const valorTotal = precioHora;
   const valorPagado =
-    tipoPago === 'abono'
-      ? Math.min(Math.max(0, Number(montoAbonado) || 0), valorTotal)
-      : 0;
+    tipoPago === 'total'
+      ? valorTotal
+      : tipoPago === 'abono'
+        ? Math.min(Math.max(0, Number(montoAbonado) || 0), valorTotal)
+        : 0;
   const valorPendiente = valorTotal - valorPagado;
   const pagoPendiente = valorPendiente > 0;
 
@@ -579,42 +602,11 @@ function calcularDesglosePago(precioHora, tipoPago, montoAbonado) {
   return { valorTotal, valorPagado, valorPendiente, estadoPago, pagoPendiente };
 }
 
-const AGENDA_INICIAL = [
-  {
-    id: 'slot-5pm',
-    hora: '5:00 PM',
-    tipo: 'ocupada',
-    nombre: 'Felipe Aristizábal',
-    deporte: 'Fútbol 5',
-    estadoPago: 'Pago Confirmado',
-    pagoPendiente: false,
-  },
-  {
-    id: 'slot-6pm',
-    hora: '6:00 PM',
-    tipo: 'ocupada',
-    nombre: 'Clara Mendoza',
-    deporte: null,
-    estadoPago: null,
-    pagoPendiente: false,
-  },
-  { id: 'slot-7pm', hora: '7:00 PM', tipo: 'disponible' },
-  { id: 'slot-8pm', hora: '8:00 PM', tipo: 'disponible' },
-];
 
-function obtenerEtiquetaDeporte(canchaId) {
-  for (const deporte of CANCHAS_POR_DEPORTE) {
-    const cancha = deporte.canchas.find((c) => c.id === canchaId);
-    if (cancha) {
-      const base = deporte.nombre.charAt(0) + deporte.nombre.slice(1).toLowerCase();
-      if (cancha.nombre.includes('F5') || cancha.nombre.includes('F7') || cancha.nombre.includes('F11')) {
-        const formato = cancha.nombre.match(/F\d+/);
-        return formato ? `${base} ${formato[0].replace('F', '')}` : base;
-      }
-      return base;
-    }
-  }
-  return null;
+function obtenerEtiquetaDeporte(tipoDeporte) {
+  if (!tipoDeporte) return null;
+  const base = tipoDeporte.charAt(0).toUpperCase() + tipoDeporte.slice(1).toLowerCase();
+  return base;
 }
 
 function ValorPropiedad({ valor, onClick }) {
@@ -642,7 +634,7 @@ function ValorPropiedad({ valor, onClick }) {
         <>
           <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
           <span className="pointer-events-none absolute right-0 bottom-full mb-2 w-52 px-2.5 py-1.5 text-[10px] leading-snug text-amber-200/90 bg-[#1a1a1a] border border-amber-500/20 rounded-md shadow-lg opacity-0 group-hover/valor:opacity-100 transition-opacity z-20 text-left font-normal not-italic">
-            ⚠️ Si permanece &apos;Sin definir&apos;, esta característica NO se mostrará en tu
+            �a�️ Si permanece &apos;Sin definir&apos;, esta característica NO se mostrará en tu
             página web pública
           </span>
         </>
@@ -839,7 +831,7 @@ function PanelZyraAI() {
         </div>
 
         <p className="relative text-xs text-zinc-400 leading-relaxed text-left">
-          💡 <span className="text-zinc-300 font-medium">Análisis Predictivo:</span>{' '}
+          �x� <span className="text-zinc-300 font-medium">Análisis Predictivo:</span>{' '}
           Detectamos baja ocupación estructural los Martes de 2:00 PM a 4:00 PM en esta
           cancha. Te sugerimos activar nuestra estrategia de &apos;Precio Dinámico
           Automático&apos; reduciendo la tarifa un 20% para captar reservas de última hora
@@ -1026,7 +1018,7 @@ function FilaOcupada({ hora, nombre, deporte, estadoPago, pagoPendiente, afectad
             <span className={isLight ? 'text-slate-500' : 'text-zinc-500'}> ({deporte})</span>
           )}
           {afectadaPorLluvia && (
-            <span className="ml-2 text-[10px] text-cyan-300/80">🌧️ Modo Lluvia</span>
+            <span className="ml-2 text-[10px] text-cyan-300/80">�xR�️ Modo Lluvia</span>
           )}
         </span>
         {estadoPago && (
@@ -1118,7 +1110,7 @@ function ExpedienteClienteContenido({
   if (antecedentes.tipo === 'nuevo') {
     return (
       <span className="inline-flex text-blue-400 bg-blue-500/5 text-[11px] px-2 py-1 rounded border border-blue-500/10 leading-snug">
-        🆕 Usuario nuevo: Se creará historial limpio para este número
+        🆕 {antecedentes.cliente ? 'Cliente registrado sin reservas previas' : 'Usuario nuevo: Se creará historial limpio para este número'}
       </span>
     );
   }
@@ -1129,7 +1121,7 @@ function ExpedienteClienteContenido({
     return (
       <div className="space-y-3">
         <span className="inline-flex text-green-400 bg-green-500/5 text-[11px] px-2 py-1 rounded leading-snug">
-          🏆 Cliente cumplido: {antecedentes.reservas} reservas / {antecedentes.faltas} faltas
+          �x�  Cliente cumplido: {antecedentes.reservas} reservas / {antecedentes.faltas} faltas
         </span>
 
         <div className="flex items-center gap-2">
@@ -1184,7 +1176,7 @@ function ExpedienteClienteContenido({
     <div className="space-y-3">
       <div className="rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2.5">
         <p className="text-[11px] text-amber-200/90 leading-relaxed">
-          ⚠️ ALERTA: Este usuario registra inasistencias. Se bloquea la opción &apos;Paga al
+          �a�️ ALERTA: Este usuario registra inasistencias. Se bloquea la opción &apos;Paga al
           llegar&apos;. Para confirmar esta reserva, es OBLIGATORIO registrar un abono mínimo del
           20% ({formatearCOP(abonoMinimo)}) en este momento.
         </p>
@@ -1329,7 +1321,7 @@ function FilaBloqueoTemporal({ hora, isLight }) {
             isLight ? 'text-slate-500' : 'text-zinc-400'
           }`}
         >
-          🔒 Bloqueo Temporal
+          �x Bloqueo Temporal
         </span>
       </div>
     </div>
@@ -1343,18 +1335,65 @@ function FilaDisponibleAcordeon({
   onColapsar,
   onAgendar,
   canchaSlug,
+  fechaSeleccionada,
   isLight,
+  complejoId,
 }) {
   const [nombre, setNombre] = useState('');
   const [telefono, setTelefono] = useState('');
   const [tipoPago, setTipoPago] = useState('llegada');
   const [montoAbonado, setMontoAbonado] = useState('');
   const [nombreAutocompletado, setNombreAutocompletado] = useState(false);
+  
+  // Nuevos campos para sincronizar con FormularioReservaManual
+  const [duracionMinutos, setDuracionMinutos] = useState(60);
+  const [metodoPago, setMetodoPago] = useState('EFECTIVO');
+  const [precioRealCargando, setPrecioRealCargando] = useState(false);
+  const [precioReal, setPrecioReal] = useState(VALOR_RESERVA_DEFAULT);
   const [cargandoHistorial, setCargandoHistorial] = useState(false);
+  const [datosClienteReal, setDatosClienteReal] = useState(null);
+  const [historialCliente, setHistorialCliente] = useState(null);
+  const [estadisticasCliente, setEstadisticasCliente] = useState(null);
+  const [muestraHistorial, setMuestraHistorial] = useState(false);
   const telefonoRef = useRef(null);
 
-  const precioHora = VALOR_RESERVA_DEFAULT;
-  const antecedentes = analizarAntecedentes(telefono);
+  const precioHora = precioReal;
+  
+  // Usar datos reales del backend si están disponibles, sino usar mock
+  let antecedentes;
+  if (datosClienteReal) {
+    // Analizar basado en datos reales del backend
+    const totalReservas = estadisticasCliente?.total_reservas || 0;
+    const reservasCanceladas = estadisticasCliente?.reservas_canceladas || 0;
+    const reservasNoShow = estadisticasCliente?.reservas_no_show || 0;
+    
+    const problemas = reservasCanceladas + reservasNoShow;
+    
+    if (totalReservas === 0) {
+      antecedentes = { tipo: 'nuevo', cliente: datosClienteReal };
+    } else if (problemas > 0) {
+      antecedentes = { 
+        tipo: 'alerta', 
+        cliente: datosClienteReal, 
+        faltas: problemas, 
+        reservas: totalReservas,
+        estadisticas: estadisticasCliente 
+      };
+    } else {
+      antecedentes = { 
+        tipo: 'confiable', 
+        cliente: datosClienteReal, 
+        reservas: totalReservas, 
+        faltas: 0,
+        calificacion: 4.5, // Por defecto si es confiable
+        estadisticas: estadisticasCliente 
+      };
+    }
+  } else {
+    // Fallback al sistema mock
+    antecedentes = analizarAntecedentes(telefono);
+  }
+  
   const esAlerta = antecedentes.tipo === 'alerta';
   const desglose = calcularDesglosePago(precioHora, tipoPago, montoAbonado);
   const abonoMinimo = calcularAbonoMinimoAlerta(precioHora);
@@ -1369,36 +1408,107 @@ function FilaDisponibleAcordeon({
     setMontoAbonado('');
     setNombreAutocompletado(false);
     setCargandoHistorial(false);
+    setDatosClienteReal(null);
+    setHistorialCliente(null);
+    setEstadisticasCliente(null);
+    setMuestraHistorial(false);
+    
+    // Resetear valores de duración y método de pago
+    setDuracionMinutos(60);
+    setMetodoPago('EFECTIVO');
+    
+    // Cargar precio real para esta franja horaria
+    cargarPrecioReal();
+    
     const timer = setTimeout(() => telefonoRef.current?.focus(), 120);
     return () => clearTimeout(timer);
   }, [expandida]);
 
+  // Cargar precio real cuando cambia la duración
+  useEffect(() => {
+    if (expandida) {
+      cargarPrecioReal();
+    }
+  }, [duracionMinutos, expandida]);
+
+  const cargarPrecioReal = async () => {
+    if (!expandida) return;
+    if (!fechaSeleccionada) {
+      setPrecioReal(VALOR_RESERVA_DEFAULT);
+      return;
+    }
+    
+    setPrecioRealCargando(true);
+    try {
+      const precio = await obtenerPrecioRealFranja(canchaSlug, fechaSeleccionada, hora, duracionMinutos);
+      setPrecioReal(precio);
+    } catch (error) {
+      console.error('Error al cargar precio real:', error);
+      setPrecioReal(VALOR_RESERVA_DEFAULT);
+    } finally {
+      setPrecioRealCargando(false);
+    }
+  };
+
+  // Búsqueda real de clientes en el backend
   useEffect(() => {
     const digits = normalizarTelefono(telefono);
     if (digits.length < 10) {
-      setNombreAutocompletado((prev) => {
-        if (prev) setNombre('');
-        return false;
-      });
+      setMuestraHistorial(false);
+      setHistorialCliente(null);
+      setEstadisticasCliente(null);
+      setDatosClienteReal(null);
+      setNombreAutocompletado(false);
+      if (digits > 0) setNombre('');
       setCargandoHistorial(false);
       return;
     }
 
     setCargandoHistorial(true);
-    const timer = setTimeout(() => {
-      const cliente = buscarClienteRegistrado(telefono);
-      if (cliente) {
-        setNombre(cliente.nombre);
-        setNombreAutocompletado(true);
-      } else {
-        setNombre('');
-        setNombreAutocompletado(false);
-      }
-      setCargandoHistorial(false);
-    }, DURACION_ANALISIS_CLIENTE_MS);
+    setMuestraHistorial(false);
 
+    const buscarCliente = async () => {
+      try {
+        const resultado = await buscarClienteEnBackend(telefono, complejoId);
+        if (resultado && resultado.cliente) {
+          setDatosClienteReal(resultado.cliente);
+          setEstadisticasCliente(resultado.estadisticas);
+          setHistorialCliente(resultado.historial);
+          setNombre(resultado.cliente.nombre);
+          setNombreAutocompletado(true);
+          setMuestraHistorial(true);
+        } else {
+          // Fallback al sistema mock si no encuentra en el backend
+          const cliente = buscarClienteRegistrado(telefono);
+          if (cliente) {
+            setNombre(cliente.nombre);
+            setNombreAutocompletado(true);
+          } else {
+            setNombre('');
+            setNombreAutocompletado(false);
+          }
+          setMuestraHistorial(false);
+        }
+      } catch (error) {
+        console.error('Error al buscar cliente:', error);
+        // Fallback al sistema mock en caso de error
+        const cliente = buscarClienteRegistrado(telefono);
+        if (cliente) {
+          setNombre(cliente.nombre);
+          setNombreAutocompletado(true);
+        } else {
+          setNombre('');
+          setNombreAutocompletado(false);
+        }
+        setMuestraHistorial(false);
+      } finally {
+        setCargandoHistorial(false);
+      }
+    };
+
+    const timer = setTimeout(buscarCliente, 800);
     return () => clearTimeout(timer);
-  }, [telefono]);
+  }, [telefono, complejoId]);
 
   useEffect(() => {
     if (esAlerta) setTipoPago('abono');
@@ -1418,16 +1528,73 @@ function FilaDisponibleAcordeon({
       valorPendiente: pago.valorPendiente,
       estadoPago: pago.estadoPago,
       pagoPendiente: pago.pagoPendiente,
+      clienteData: datosClienteReal,
     };
   };
 
   const pagoFormularioValido =
-    tipoPago === 'llegada' ? !esAlerta : montoAbonoNum > 0 && montoAbonoNum <= precioHora;
+    tipoPago === 'llegada' ? !esAlerta :
+    tipoPago === 'total'   ? true :
+    montoAbonoNum > 0 && montoAbonoNum <= precioHora;
 
-  const ejecutarAgendamiento = () => {
+  const ejecutarAgendamiento = async () => {
     if (!nombre.trim() || !pagoFormularioValido) return;
     if (esAlerta && montoAbonoNum < abonoMinimo) return;
-    onAgendar(construirDatosReserva());
+
+    try {
+      setCargandoHistorial(true);
+      const token = localStorage.getItem('token');
+      
+      // Extraer el ID numérico de la cancha
+      const canchaIdNumerico = extraerCanchaId(canchaSlug);
+      
+      // Usar la fecha real seleccionada en el calendario
+      const fechaReserva = fechaSeleccionada ?? new Date().toISOString().split('T')[0];
+
+      // Convertir "8:00 PM" → "20:00"
+      const convertirHora24 = (horaTexto) => {
+        const match = horaTexto.match(/(\d+):(\d+)\s*(AM|PM)/i);
+        if (!match) return horaTexto;
+        const [, h, m, periodo] = match;
+        let hour24 = parseInt(h);
+        if (periodo.toUpperCase() === 'PM' && hour24 !== 12) hour24 += 12;
+        else if (periodo.toUpperCase() === 'AM' && hour24 === 12) hour24 = 0;
+        return `${String(hour24).padStart(2, '0')}:${m}`;
+      };
+
+      const estadoPagoPayload =
+        tipoPago === 'total'   ? 'PAGADA_TOTAL' :
+        tipoPago === 'llegada' ? 'ABONADA' :
+        montoAbonoNum >= precioHora ? 'PAGADA_TOTAL' : 'ABONADA';
+
+      const payload = {
+        cancha_id: parseInt(canchaIdNumerico),
+        fecha: fechaReserva,
+        hora_inicio: convertirHora24(hora),
+        duracion_minutos: duracionMinutos,
+        metodo_pago: tipoPago !== 'llegada' ? metodoPago : null,
+        estado_pago: estadoPagoPayload,
+        origen_reserva: 'MANUAL',
+        telefono_contacto: telefono,
+        nombre_contacto: nombre
+      };
+
+      const response = await axiosInstance.post('/api/reservas', payload, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (response.data.success) {
+        const datosReserva = construirDatosReserva();
+        onAgendar(datosReserva);
+        console.log('✅ Reserva creada exitosamente desde cancha específica');
+      }
+    } catch (error) {
+      console.error('Error al crear reserva:', error);
+      const mensaje = error.response?.data?.message || 'Error al crear la reserva';
+      alert(mensaje);
+    } finally {
+      setCargandoHistorial(false);
+    }
   };
 
   const handleConfirmar = () => {
@@ -1439,7 +1606,7 @@ function FilaDisponibleAcordeon({
   const puedeConfirmar =
     nombre.trim().length > 0 &&
     antecedentes.tipo !== 'vacio' &&
-    antecedentes.tipo !== 'alerta' &&
+    (antecedentes.tipo !== 'alerta' || (esAlerta && montoAbonoNum >= abonoMinimo)) &&
     pagoFormularioValido &&
     !cargandoHistorial;
 
@@ -1518,21 +1685,54 @@ function FilaDisponibleAcordeon({
           }`}
         >
           <div className="min-h-0 overflow-hidden">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start p-4 pt-2">
-              <div className="space-y-2">
-                <p className="text-xs font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded w-fit">
-                  Precio de esta hora: {formatearCOP(precioHora)}
-                </p>
+            <div className="p-4 pt-2">
+              <div className="flex gap-6 items-start">
+                {/* Formulario principal */}
+                <div className="flex-1 min-w-0 space-y-2 max-w-md">
+                <div className="flex items-center gap-2">
+                  <p className="text-xs font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded w-fit">
+                    Precio total ({duracionMinutos} min): {precioRealCargando ? '...' : formatearCOP(precioHora)}
+                  </p>
+                  {precioRealCargando && (
+                    <div className="w-3 h-3 border border-emerald-400/20 border-t-emerald-400 rounded-full animate-spin"></div>
+                  )}
+                </div>
 
-                <input
-                  ref={telefonoRef}
-                  type="tel"
-                  inputMode="numeric"
-                  value={telefono}
-                  onChange={(e) => setTelefono(e.target.value.replace(/[^\d+\s-]/g, ''))}
-                  placeholder="Teléfono (10 dígitos)"
-                  className={CLASE_INPUT_ACORDEON}
-                />
+                <div className="relative">
+                  <input
+                    ref={telefonoRef}
+                    type="tel"
+                    inputMode="numeric"
+                    value={telefono}
+                    onChange={(e) => setTelefono(e.target.value.replace(/[^\d+\s-]/g, ''))}
+                    placeholder="+57 300 123 4567"
+                    className={`${CLASE_INPUT_ACORDEON} ${cargandoHistorial ? 'pr-8' : ''}`}
+                  />
+                  {cargandoHistorial && (
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                      <div className="w-4 h-4 border-2 border-emerald-400/20 border-t-emerald-400 rounded-full animate-spin"></div>
+                    </div>
+                  )}
+                </div>
+                
+                <div className={`transition-all duration-300 overflow-hidden ${
+                  cargandoHistorial || (muestraHistorial && datosClienteReal)
+                    ? 'max-h-6 opacity-100'
+                    : 'max-h-0 opacity-0'
+                }`}>
+                  {cargandoHistorial && (
+                    <p className="text-[11px] text-emerald-400/80 flex items-center gap-1.5 animate-pulse">
+                      <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400 animate-ping" />
+                      Verificando información del cliente...
+                    </p>
+                  )}
+                  {!cargandoHistorial && muestraHistorial && datosClienteReal && (
+                    <p className="text-[11px] text-emerald-400/90 flex items-center gap-1.5">
+                      <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                      {datosClienteReal.es_cliente_registrado ? 'Cliente registrado' : 'Cliente encontrado'} • {estadisticasCliente?.total_reservas || 0} reservas
+                    </p>
+                  )}
+                </div>
 
                 <div className="relative">
                   <input
@@ -1558,6 +1758,30 @@ function FilaDisponibleAcordeon({
                   )}
                 </div>
 
+                {/* Selector de duración */}
+                <div className="space-y-1.5">
+                  <span className="text-zinc-500 text-[10px] uppercase tracking-wider">
+                    Duración del partido
+                  </span>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {DURACIONES.map(({ id, label, icon: Icono }) => (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => setDuracionMinutos(id)}
+                        className={`flex items-center gap-1.5 rounded-lg border p-2 text-[11px] font-medium transition-all duration-150 ${
+                          duracionMinutos === id
+                            ? 'border-emerald-500 bg-emerald-500/[0.06] text-emerald-300'
+                            : 'border-slate-700/80 bg-slate-900/30 text-slate-400 hover:border-slate-600 hover:text-slate-200'
+                        }`}
+                      >
+                        <Icono className="h-3 w-3" strokeWidth={1.5} />
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 <div className="space-y-1.5 pt-0.5">
                   <span className="text-zinc-500 text-[10px] uppercase tracking-wider">
                     Tipo de Pago
@@ -1577,6 +1801,17 @@ function FilaDisponibleAcordeon({
                     </button>
                     <button
                       type="button"
+                      onClick={() => setTipoPago('total')}
+                      className={`text-left px-2 py-1.5 rounded text-[11px] font-medium border transition-colors ${
+                        tipoPago === 'total'
+                          ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                          : 'bg-zinc-950 border-white/5 text-zinc-500 hover:text-zinc-300'
+                      }`}
+                    >
+                      Pago Total ({formatearCOP(precioHora)})
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => setTipoPago('abono')}
                       className={`text-left px-2 py-1.5 rounded text-[11px] font-medium border transition-colors ${
                         tipoPago === 'abono'
@@ -1584,7 +1819,7 @@ function FilaDisponibleAcordeon({
                           : 'bg-zinc-950 border-white/5 text-zinc-500 hover:text-zinc-300'
                       }`}
                     >
-                      Registrar Abono/Anticipo
+                      Registrar Anticipo (30%)
                     </button>
                   </div>
                 </div>
@@ -1607,81 +1842,146 @@ function FilaDisponibleAcordeon({
                   </label>
                 )}
 
+                {/* Método de pago (para pago inmediato: total o anticipo) */}
+                {(tipoPago === 'total' || tipoPago === 'abono') && (
+                  <div className="space-y-1.5">
+                    <span className="text-zinc-500 text-[10px] uppercase tracking-wider">
+                      Método de pago
+                    </span>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {METODOS_PAGO.map(({ id, label, icon: Icono }) => (
+                        <button
+                          key={id}
+                          type="button"
+                          onClick={() => setMetodoPago(id)}
+                          className={`flex flex-col items-center gap-1 rounded-lg border p-2 text-[10px] font-medium transition-all duration-150 ${
+                            metodoPago === id
+                              ? 'border-emerald-500 bg-emerald-500/[0.06] text-emerald-300'
+                              : 'border-slate-700/80 bg-slate-900/30 text-slate-400 hover:border-slate-600 hover:text-slate-200'
+                          }`}
+                        >
+                          <Icono className="h-3.5 w-3.5" strokeWidth={1.5} />
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <p className="text-[10px] text-zinc-400">
-                  Abona hoy: {formatearCOP(desglose.valorPagado)} • Restante en complejo:{' '}
-                  {formatearCOP(desglose.valorPendiente)}
+                  {tipoPago === 'total'
+                    ? `Pago completo: ${formatearCOP(precioHora)} · Pendiente: $0`
+                    : tipoPago === 'abono'
+                      ? `Abona hoy: ${formatearCOP(desglose.valorPagado)} · Restante en complejo: ${formatearCOP(desglose.valorPendiente)}`
+                      : `Paga al llegar: ${formatearCOP(precioHora)}`
+                  }
                 </p>
 
-                <button
-                  type="button"
-                  onClick={handleConfirmar}
-                  disabled={!puedeConfirmar}
-                  className="mt-1 bg-white text-black hover:bg-zinc-200 disabled:opacity-40 disabled:cursor-not-allowed text-[11px] font-semibold px-3 py-1.5 rounded transition-colors"
-                >
-                  Confirmar y Verificar
-                </button>
-              </div>
+                  <button
+                    type="button"
+                    onClick={handleConfirmar}
+                    disabled={!puedeConfirmar}
+                    className="mt-1 bg-white text-black hover:bg-zinc-200 disabled:opacity-40 disabled:cursor-not-allowed text-[11px] font-semibold px-3 py-1.5 rounded transition-colors"
+                  >
+                    Confirmar y Verificar
+                  </button>
 
-              <PanelAntecedentesReserva
-                telefono={telefono}
-                cargandoHistorial={cargandoHistorial}
-                precioHora={precioHora}
-                tipoPago={tipoPago}
-                montoAbonado={montoAbonado}
-                onRechazar={onColapsar}
-                onForzarAgendar={ejecutarAgendamiento}
-              />
+                  {/* Panel de antecedentes integrado en la columna izquierda cuando no hay historial */}
+                  {(!muestraHistorial || esAlerta) && (
+                    <div className="mt-4 pt-4 border-t border-white/10">
+                      <PanelAntecedentesReserva
+                        telefono={telefono}
+                        cargandoHistorial={cargandoHistorial}
+                        precioHora={precioHora}
+                        tipoPago={tipoPago}
+                        montoAbonado={montoAbonado}
+                        onRechazar={onColapsar}
+                        onForzarAgendar={ejecutarAgendamiento}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Panel lateral del historial del cliente con animación */}
+                <div className={`transition-all duration-700 ease-out ${
+                  (muestraHistorial && datosClienteReal) || cargandoHistorial
+                    ? 'opacity-100 w-80 max-w-sm'
+                    : 'opacity-0 w-0 max-w-0 overflow-hidden pointer-events-none'
+                }`}>
+                  <div className={`pl-6 border-l border-white/10 transition-all duration-500 ${
+                    (muestraHistorial && datosClienteReal) || cargandoHistorial
+                      ? 'translate-x-0 opacity-100'
+                      : 'translate-x-6 opacity-0'
+                  }`}
+                  style={{
+                    boxShadow: (muestraHistorial && datosClienteReal) 
+                      ? '-4px 0 20px rgba(0, 0, 0, 0.1)' 
+                      : 'none'
+                  }}>
+                    {cargandoHistorial && (
+                      <div className="animate-pulse">
+                        {/* Header skeleton */}
+                        <div className="bg-gradient-to-r from-white/5 to-white/10 rounded-lg p-4 mb-4 border border-white/5">
+                          <div className="flex items-center gap-3 mb-3">
+                            <div className="h-10 w-10 bg-white/10 rounded-full"></div>
+                            <div className="flex-1">
+                              <div className="h-4 bg-white/15 rounded mb-2 w-3/4"></div>
+                              <div className="h-3 bg-white/10 rounded w-1/2"></div>
+                            </div>
+                          </div>
+                          
+                          {/* Stats skeleton */}
+                          <div className="grid grid-cols-3 gap-4 mt-4">
+                            <div className="text-center">
+                              <div className="h-6 bg-white/15 rounded mb-1 mx-auto w-8"></div>
+                              <div className="h-2 bg-white/10 rounded w-full"></div>
+                            </div>
+                            <div className="text-center">
+                              <div className="h-6 bg-white/15 rounded mb-1 mx-auto w-6"></div>
+                              <div className="h-2 bg-white/10 rounded w-full"></div>
+                            </div>
+                            <div className="text-center">
+                              <div className="h-6 bg-white/15 rounded mb-1 mx-auto w-10"></div>
+                              <div className="h-2 bg-white/10 rounded w-full"></div>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {/* History skeleton */}
+                        <div className="space-y-2">
+                          <div className="h-3 bg-white/10 rounded w-24 mb-3"></div>
+                          {[1, 2, 3].map((i) => (
+                            <div key={i} className="flex items-center justify-between p-2 bg-white/5 rounded border border-white/5">
+                              <div className="h-3 bg-white/10 rounded w-24"></div>
+                              <div className="h-5 bg-white/10 rounded w-16"></div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {muestraHistorial && !cargandoHistorial && datosClienteReal && (
+                      <div 
+                        className="transition-all duration-500 ease-out"
+                        style={{
+                          animation: 'fadeInUp 0.6s ease-out forwards'
+                        }}
+                      >
+                        <HistorialCliente
+                          cliente={datosClienteReal}
+                          estadisticas={estadisticasCliente}
+                          historial={historialCliente}
+                          cargando={cargandoHistorial}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-function SelectorRangoFecha({ valor, onChange }) {
-  return (
-    <div className="flex items-center gap-1 bg-zinc-800/50 border border-white/5 rounded-lg p-1">
-      {RANGOS_FECHA.map((rango) => (
-        <button
-          key={rango.id}
-          type="button"
-          onClick={() => onChange(rango.id)}
-          className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors ${
-            valor === rango.id
-              ? 'bg-white/10 text-white'
-              : 'text-zinc-500 hover:text-zinc-300'
-          }`}
-        >
-          {rango.etiqueta}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function ToggleModoVista({ valor, onChange }) {
-  const opciones = [
-    { id: 'lista', etiqueta: 'Lista de Pagos' },
-    { id: 'graficas', etiqueta: 'Análisis de Ocupación' },
-  ];
-
-  return (
-    <div className="bg-zinc-800/50 border border-white/5 rounded-lg p-1 flex items-center gap-1">
-      {opciones.map((opcion) => (
-        <button
-          key={opcion.id}
-          type="button"
-          onClick={() => onChange(opcion.id)}
-          className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors ${
-            valor === opcion.id
-              ? 'bg-white/10 text-white'
-              : 'text-zinc-500 hover:text-zinc-300'
-          }`}
-        >
-          {opcion.etiqueta}
-        </button>
-      ))}
     </div>
   );
 }
@@ -1719,571 +2019,51 @@ function EstrellasCalificacion({ valor, editable, onChange }) {
     </div>
   );
 }
-
-function PanelPerfilCliente({
-  perfil,
-  abierto,
-  onCerrar,
-  calificacion,
-  notaInterna,
-  bloqueado,
-  onCambiarCalificacion,
-  onCambiarNota,
-  onToggleBloqueo,
-}) {
-  useEffect(() => {
-    if (!abierto) return;
-    const handleEscape = (e) => {
-      if (e.key === 'Escape') onCerrar();
-    };
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
-  }, [abierto, onCerrar]);
-
-  if (!perfil) return null;
-
-  const urlWhatsApp = `https://wa.me/${telefonoWhatsApp(perfil.telefono)}`;
-
-  return (
-    <>
-      <div
-        className={`fixed inset-0 bg-black/50 z-40 transition-opacity duration-300 ${
-          abierto ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
-        }`}
-        onClick={onCerrar}
-        aria-hidden={!abierto}
-      />
-
-      <aside
-        className={`fixed top-0 right-0 bottom-0 w-full max-w-[420px] bg-[#121212] border-l border-white/5 z-50 flex flex-col shadow-2xl transition-transform duration-300 ease-out ${
-          abierto ? 'translate-x-0' : 'translate-x-full pointer-events-none'
-        }`}
-        aria-hidden={!abierto}
-        role="dialog"
-        aria-labelledby="perfil-cliente-titulo"
-      >
-        <div className="shrink-0 px-5 py-4 border-b border-white/5 bg-[#161618]">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-1">
-                Perfil del Cliente
-              </p>
-              <h2 id="perfil-cliente-titulo" className="text-base font-semibold text-white truncate">
-                {perfil.nombre}
-              </h2>
-              <div className="flex items-center gap-2 mt-1.5">
-                <p className="text-xs text-zinc-400">{perfil.telefono}</p>
-                <a
-                  href={urlWhatsApp}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="p-1 rounded text-[#25D366]/70 hover:text-[#25D366] hover:bg-[#25D366]/10 transition-colors"
-                  aria-label="Abrir WhatsApp"
-                >
-                  <IconoWhatsApp className="w-3.5 h-3.5" />
-                </a>
-              </div>
-              <p className="text-[11px] text-zinc-600 mt-1">
-                Miembro desde {perfil.miembroDesde}
-              </p>
-            </div>
-            <button
-              type="button"
-              aria-label="Cerrar perfil"
-              onClick={onCerrar}
-              className="p-1.5 rounded text-zinc-600 hover:text-white hover:bg-white/5 transition-colors shrink-0"
-            >
-              <X size={14} strokeWidth={1.5} />
-            </button>
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto min-h-0 px-5 py-5 space-y-6">
-          <section>
-            <h3 className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-3">
-              Calificación y Comportamiento
-            </h3>
-
-            <div className="bg-[#161618] border border-white/5 rounded-xl p-4">
-              <div className="flex items-center gap-3 mb-3">
-                <EstrellasCalificacion
-                  valor={calificacion}
-                  editable
-                  onChange={onCambiarCalificacion}
-                />
-                <span className="text-sm font-semibold text-white tabular-nums">
-                  {calificacion.toFixed(1)}
-                  <span className="text-zinc-500 font-normal"> / 5.0</span>
-                </span>
-              </div>
-
-              {perfil.etiquetas.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mb-4">
-                  {perfil.etiquetas.map((etiqueta) => (
-                    <span
-                      key={etiqueta.texto}
-                      className={`inline-flex px-2 py-0.5 rounded-md text-[10px] font-medium border ${etiqueta.estilo}`}
-                    >
-                      {etiqueta.texto}
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              <label className="block">
-                <span className="text-[10px] font-medium text-zinc-500 mb-1.5 block">
-                  Nota interna del administrador
-                </span>
-                <textarea
-                  value={notaInterna}
-                  onChange={(e) => onCambiarNota(e.target.value)}
-                  placeholder="Ej: Siempre pide balones prestados y los devuelve tarde"
-                  rows={3}
-                  className="w-full px-3 py-2 text-xs text-white placeholder:text-zinc-600 bg-[#121212] border border-white/5 rounded-lg outline-none focus:border-violet-500/30 resize-none transition-colors"
-                />
-              </label>
-            </div>
-          </section>
-
-          <section>
-            <h3 className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 mb-3">
-              Historial de Reservas
-            </h3>
-
-            <div className="bg-[#161618] border border-white/5 rounded-xl overflow-hidden divide-y divide-white/5">
-              {perfil.historial.map((registro, i) => (
-                <div
-                  key={`${registro.fecha}-${i}`}
-                  className="flex items-center justify-between gap-3 px-3 py-2.5 text-xs hover:bg-white/[0.02] transition-colors"
-                >
-                  <div className="min-w-0">
-                    <p className="text-zinc-300 tabular-nums">{registro.fecha}</p>
-                    <p className="text-[11px] text-zinc-600 mt-0.5 truncate">{registro.cancha}</p>
-                  </div>
-                  <span
-                    className={`shrink-0 px-2 py-0.5 rounded-md text-[10px] font-medium border ${
-                      ESTILO_ESTADO_HISTORIAL[registro.estado] ?? 'text-zinc-400 bg-white/5 border-white/5'
-                    }`}
-                  >
-                    {registro.estado}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </section>
-        </div>
-
-        <div className="shrink-0 px-5 py-4 border-t border-white/5 bg-[#161618] space-y-3">
-          <button
-            type="button"
-            onClick={() => window.open(urlWhatsApp, '_blank', 'noopener,noreferrer')}
-            className="w-full py-2.5 px-4 rounded-lg text-xs font-medium bg-zinc-800 text-white hover:bg-zinc-700 transition-colors"
-          >
-            Enviar WhatsApp Recordatorio
-          </button>
-
-          <div>
-            <button
-              type="button"
-              onClick={onToggleBloqueo}
-              className={`w-full py-2.5 px-4 rounded-lg text-xs font-semibold border transition-colors ${
-                bloqueado
-                  ? 'bg-red-500 text-white border-red-500 hover:bg-red-600'
-                  : 'bg-red-500/10 text-red-400 border-red-500/20 hover:bg-red-500 hover:text-white'
-              }`}
-            >
-              {bloqueado ? 'CLIENTE BLOQUEADO — DESBLOQUEAR' : 'BLOQUEAR CLIENTE'}
-            </button>
-            <p className="text-[10px] text-zinc-600 leading-relaxed mt-2">
-              Si bloqueas a este cliente, el sistema rechazará automáticamente cualquier
-              intento de reserva desde su número de teléfono tanto en la web pública como
-              por la IA de Zyra.
-            </p>
-          </div>
-        </div>
-      </aside>
-    </>
-  );
-}
-
-function TablaPagosPendientes({ reservas, liquidadas, onLiquidar, onSeleccionarCliente }) {
-  if (reservas.length === 0) {
-    return (
-      <p className="text-center text-zinc-500 text-sm py-12">
-        No hay saldos pendientes en este periodo
-      </p>
-    );
-  }
-
-  const columnasTabla =
-    'grid grid-cols-[minmax(140px,1.3fr)_minmax(120px,1.1fr)_minmax(100px,0.9fr)_minmax(90px,0.85fr)_minmax(90px,0.85fr)_minmax(90px,0.85fr)_minmax(80px,0.75fr)] gap-3';
-
-  return (
-    <div className="border border-white/5 rounded-xl overflow-x-auto">
-      <div className={`${columnasTabla} min-w-[820px] px-4 py-2.5 border-b border-white/5 bg-white/[0.02]`}>
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-          Jugador
-        </span>
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-          Horario
-        </span>
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-          Estado Web
-        </span>
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-          Valor Total
-        </span>
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-          Pagado al Reservar
-        </span>
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
-          Por Liquidar
-        </span>
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 text-right">
-          Acción
-        </span>
-      </div>
-
-      {reservas.map((reserva) => {
-        const liquidada = liquidadas.has(reserva.id);
-
-        return (
-          <div
-            key={reserva.id}
-            className={`${columnasTabla} min-w-[820px] px-4 py-3 border-b border-white/5 last:border-b-0 text-xs hover:bg-white/[0.02] transition-colors items-center`}
-          >
-            <div className="min-w-0">
-              <button
-                type="button"
-                onClick={() => onSeleccionarCliente(reserva)}
-                className="text-purple-400 hover:text-purple-300 hover:underline cursor-pointer font-medium truncate text-left max-w-full"
-              >
-                {reserva.nombre}
-              </button>
-              <p className="text-[11px] text-zinc-600 mt-0.5">{reserva.telefono}</p>
-            </div>
-
-            <p className="text-zinc-400">{reserva.horario}</p>
-
-            <div>
-              {reserva.reservaWeb ? (
-                <span className="inline-flex px-2 py-0.5 rounded-md text-[10px] font-medium text-[#00FF66]/90 bg-[#00FF66]/10 border border-[#00FF66]/15">
-                  Anticipo 20% Pagado
-                </span>
-              ) : (
-                <span className="text-zinc-600 text-[11px]">Reserva en caja</span>
-              )}
-            </div>
-
-            <p className="text-zinc-300 tabular-nums">{formatearCOP(reserva.valorTotal)}</p>
-
-            <p className="text-zinc-400 tabular-nums">
-              {reserva.valorReservado > 0
-                ? formatearCOP(reserva.valorReservado)
-                : '—'}
-            </p>
-
-            <p className="text-white font-semibold tabular-nums">
-              {liquidada ? (
-                <span className="text-[#00FF66]/80 font-medium">
-                  {formatearCOP(0)}
-                </span>
-              ) : (
-                formatearCOP(reserva.pendientePagar)
-              )}
-            </p>
-
-            <div className="flex justify-end">
-              {liquidada ? (
-                <span className="inline-flex items-center gap-1 text-[11px] text-[#00FF66]/80">
-                  <Check size={12} strokeWidth={2} />
-                  Liquidado
-                </span>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => onLiquidar(reserva.id)}
-                  className="text-[11px] font-medium px-2 py-1 rounded bg-white text-zinc-900 hover:bg-zinc-200 transition-colors"
-                >
-                  Liquidar en Caja
-                </button>
-              )}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function GraficaTendenciaOcupacion({ datos, totalHoras }) {
-  const ancho = 400;
-  const alto = 160;
-  const paddingX = 8;
-  const paddingY = 12;
-  const areaAncho = ancho - paddingX * 2;
-  const areaAlto = alto - paddingY * 2;
-
-  const puntos = datos.map((dato, i) => {
-    const x = paddingX + (i / Math.max(datos.length - 1, 1)) * areaAncho;
-    const y = paddingY + areaAlto - (dato.ocupacion / 100) * areaAlto;
-    return { x, y, ...dato };
-  });
-
-  const lineaPath = puntos
-    .map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`)
-    .join(' ');
-
-  const areaPath = `${lineaPath} L ${puntos[puntos.length - 1].x} ${paddingY + areaAlto} L ${puntos[0].x} ${paddingY + areaAlto} Z`;
-
-  return (
-    <div className="bg-[#161618] border border-white/5 rounded-xl p-4">
-      <div className="flex items-baseline justify-between gap-3 mb-4">
-        <h4 className="text-xs text-zinc-400 font-semibold">
-          Evolución de Ocupación (%)
-        </h4>
-        <span className="text-[11px] text-zinc-600">
-          Total: {totalHoras} horas reservadas
-        </span>
-      </div>
-
-      <div className="relative">
-        <svg
-          viewBox={`0 0 ${ancho} ${alto}`}
-          className="w-full h-[180px]"
-          preserveAspectRatio="none"
-          role="img"
-          aria-label="Gráfica de evolución de ocupación"
-        >
-          <defs>
-            <linearGradient id="gradienteOcupacion" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="rgba(139, 92, 246, 0.35)" />
-              <stop offset="100%" stopColor="rgba(139, 92, 246, 0)" />
-            </linearGradient>
-          </defs>
-
-          {[0, 25, 50, 75, 100].map((nivel) => {
-            const y = paddingY + areaAlto - (nivel / 100) * areaAlto;
-            return (
-              <line
-                key={nivel}
-                x1={paddingX}
-                y1={y}
-                x2={ancho - paddingX}
-                y2={y}
-                stroke="rgba(255,255,255,0.04)"
-                strokeWidth="1"
-              />
-            );
-          })}
-
-          <path d={areaPath} fill="url(#gradienteOcupacion)" />
-          <path
-            d={lineaPath}
-            fill="none"
-            stroke="rgba(167, 139, 250, 0.9)"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-
-          {puntos.map((punto) => (
-            <circle
-              key={punto.etiqueta}
-              cx={punto.x}
-              cy={punto.y}
-              r="3"
-              fill="#a78bfa"
-              stroke="#161618"
-              strokeWidth="1.5"
-            />
-          ))}
-        </svg>
-
-        <div
-          className="flex justify-between mt-2 px-1"
-          style={{ paddingLeft: `${(paddingX / ancho) * 100}%`, paddingRight: `${(paddingX / ancho) * 100}%` }}
-        >
-          {datos.map((dato) => (
-            <span key={dato.etiqueta} className="text-[10px] text-zinc-600">
-              {dato.etiqueta}
-            </span>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function GraficaBloquesHorario({ bloques }) {
-  const maxReservas = Math.max(...bloques.map((b) => b.reservas), 1);
-
-  return (
-    <div className="bg-[#161618] border border-white/5 rounded-xl p-4">
-      <h4 className="text-xs text-zinc-400 font-semibold mb-4">
-        Ocupación por Bloque Horario
-      </h4>
-
-      <div className="flex items-end justify-between gap-3 h-[180px] px-2">
-        {bloques.map((bloque) => {
-          const altura = (bloque.reservas / maxReservas) * 100;
-          const esPico = bloque.reservas === maxReservas;
-
-          return (
-            <div key={bloque.hora} className="flex-1 flex flex-col items-center gap-2 h-full justify-end">
-              <span className="text-[10px] text-zinc-500 tabular-nums">{bloque.reservas}</span>
-              <div
-                className="w-full max-w-[48px] rounded-t-md transition-all duration-300"
-                style={{
-                  height: `${Math.max(altura, 8)}%`,
-                  background: esPico
-                    ? 'linear-gradient(180deg, rgba(167, 139, 250, 0.95) 0%, rgba(109, 40, 217, 0.5) 100%)'
-                    : 'linear-gradient(180deg, rgba(139, 92, 246, 0.45) 0%, rgba(139, 92, 246, 0.12) 100%)',
-                  boxShadow: esPico ? '0 0 20px rgba(139, 92, 246, 0.25)' : 'none',
-                }}
-              />
-              <span className={`text-[10px] ${esPico ? 'text-violet-300/80' : 'text-zinc-600'}`}>
-                {bloque.hora}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function SeccionReservas() {
-  const [rangoFecha, setRangoFecha] = useState('semana');
-  const [modoVista, setModoVista] = useState('lista');
-  const [liquidadas, setLiquidadas] = useState(() => new Set());
-  const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
-  const [edicionesCliente, setEdicionesCliente] = useState({});
-
-  const reservasVisibles = RESERVAS_PAGOS_MOCK.filter((r) =>
-    reservaEnRango(r.fecha, rangoFecha)
-  );
-
-  const datosOcupacion = OCUPACION_POR_RANGO[rangoFecha];
-
-  const perfilActivo = clienteSeleccionado
-    ? obtenerPerfilCliente(clienteSeleccionado)
-    : null;
-
-  const edicionActiva = clienteSeleccionado
-    ? edicionesCliente[clienteSeleccionado.telefono] ?? {}
-    : {};
-
-  const calificacionActiva = edicionActiva.calificacion ?? perfilActivo?.calificacion ?? 3;
-  const notaActiva = edicionActiva.notaInterna ?? perfilActivo?.notaInterna ?? '';
-  const bloqueadoActivo = edicionActiva.bloqueado ?? false;
-
-  const liquidarEnCaja = useCallback((id) => {
-    setLiquidadas((prev) => new Set([...prev, id]));
-  }, []);
-
-  const abrirPerfilCliente = useCallback((reserva) => {
-    setClienteSeleccionado(reserva);
-  }, []);
-
-  const cerrarPerfilCliente = useCallback(() => {
-    setClienteSeleccionado(null);
-  }, []);
-
-  const actualizarEdicionCliente = useCallback((telefono, cambios) => {
-    setEdicionesCliente((prev) => ({
-      ...prev,
-      [telefono]: { ...prev[telefono], ...cambios },
-    }));
-  }, []);
-
-  return (
-    <>
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
-        <SelectorRangoFecha valor={rangoFecha} onChange={setRangoFecha} />
-        <ToggleModoVista valor={modoVista} onChange={setModoVista} />
-      </div>
-
-      {modoVista === 'lista' ? (
-        <TablaPagosPendientes
-          reservas={reservasVisibles}
-          liquidadas={liquidadas}
-          onLiquidar={liquidarEnCaja}
-          onSeleccionarCliente={abrirPerfilCliente}
-        />
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
-          <GraficaTendenciaOcupacion
-            datos={datosOcupacion.tendencia}
-            totalHoras={datosOcupacion.totalHoras}
-          />
-          <GraficaBloquesHorario bloques={datosOcupacion.bloques} />
-        </div>
-      )}
-
-      <PanelPerfilCliente
-        perfil={perfilActivo}
-        abierto={clienteSeleccionado !== null}
-        onCerrar={cerrarPerfilCliente}
-        calificacion={calificacionActiva}
-        notaInterna={notaActiva}
-        bloqueado={bloqueadoActivo}
-        onCambiarCalificacion={(valor) =>
-          clienteSeleccionado &&
-          actualizarEdicionCliente(clienteSeleccionado.telefono, { calificacion: valor })
-        }
-        onCambiarNota={(valor) =>
-          clienteSeleccionado &&
-          actualizarEdicionCliente(clienteSeleccionado.telefono, { notaInterna: valor })
-        }
-        onToggleBloqueo={() =>
-          clienteSeleccionado &&
-          actualizarEdicionCliente(clienteSeleccionado.telefono, {
-            bloqueado: !bloqueadoActivo,
-          })
-        }
-      />
-    </>
-  );
-}
-
-function SeccionGeneral({ canchaSlug }) {
-  const fechaHoy = obtenerFechaCali();
+function SeccionGeneral({ canchaSlug, canchaDetalle, loadingDetalle, fechaSeleccionada, onFechaCambio, complejoId, onRecargarDatos }) {
   const [horaExpandida, setHoraExpandida] = useState(null);
-  const [agenda, setAgenda] = useState(AGENDA_INICIAL);
   const { isRainModeActive, isReservaAfectada, descripcionActiva } = useRainMode();
   const { isLight } = useAccessibility();
   const { isCanchaBloqueada, obtenerExpiracion } = useCourtBlock();
   const canchaBloqueada = isCanchaBloqueada(canchaSlug);
 
+  // Construir agenda desde datos de la API (memorizado)
+  const agendaBase = useMemo(() => {
+    if (!canchaDetalle?.horarios?.length) return [];
+    return buildAgendaFromAPI(
+      canchaDetalle.horarios,
+      canchaDetalle.reservas ?? [],
+      canchaDetalle.cancha
+    );
+  }, [canchaDetalle]);
+
+  // Estado local para actualizaciones optimistas (reservas manuales)
+  const [agendaLocal, setAgendaLocal] = useState(agendaBase);
+
+  // Sincronizar cuando lleguen datos frescos de la API
   useEffect(() => {
-    setAgenda(AGENDA_INICIAL);
+    setAgendaLocal(agendaBase);
     setHoraExpandida(null);
-  }, [canchaSlug]);
+  }, [agendaBase]);
 
   useEffect(() => {
     if (canchaBloqueada) setHoraExpandida(null);
   }, [canchaBloqueada]);
 
-  const expandirFila = useCallback((hora) => {
-    setHoraExpandida(hora);
-  }, []);
-
-  const colapsarFila = useCallback(() => {
-    setHoraExpandida(null);
-  }, []);
+  const expandirFila = useCallback((hora) => setHoraExpandida(hora), []);
+  const colapsarFila = useCallback(() => setHoraExpandida(null), []);
 
   const agendarReserva = useCallback(
     (datos) => {
-      setAgenda((prev) =>
+      const tipoDeporte = canchaDetalle?.cancha?.tipo_deporte ?? null;
+      setAgendaLocal((prev) =>
         prev.map((slot) =>
           slot.hora === datos.hora && slot.tipo === 'disponible'
             ? {
-                id: `slot-${datos.hora.replace(/\s/g, '')}-${Date.now()}`,
+                id: `slot-manual-${datos.hora.replace(/\s/g, '')}-${Date.now()}`,
                 hora: datos.hora,
                 tipo: 'ocupada',
                 nombre: datos.nombre,
-                deporte: obtenerEtiquetaDeporte(datos.canchaId),
+                deporte: obtenerEtiquetaDeporte(tipoDeporte),
                 estadoPago: datos.estadoPago,
                 pagoPendiente: datos.pagoPendiente,
                 valorTotal: datos.valorTotal,
@@ -2294,23 +2074,89 @@ function SeccionGeneral({ canchaSlug }) {
         )
       );
       setHoraExpandida(null);
+      
+      // Recargar datos desde el servidor después de crear la reserva
+      if (onRecargarDatos) {
+        setTimeout(() => {
+          onRecargarDatos();
+        }, 500);
+      }
     },
-    []
+    [canchaDetalle, onRecargarDatos]
   );
 
-  const horasDisponibles = agenda.filter((s) => s.tipo === 'disponible').length;
+  // Métricas: usar datos del backend o calcular desde la agenda local como fallback
+  const ocupacion = canchaDetalle?.summary?.ocupacion_porcentaje ?? null;
+  const horasDisp = canchaDetalle?.summary?.horas_disponibles
+    ?? agendaLocal.filter((s) => s.tipo === 'disponible').length;
+  const ingresos = canchaDetalle?.summary?.ingresos_estimados_cop ?? 0;
+
+  const fechaDisplay = fechaSeleccionada
+    ? formatearFechaDisplay(fechaSeleccionada)
+    : obtenerFechaCali();
+
+  const esHoy = fechaSeleccionada === fechaHoyBogota();
+
+  // ���� Skeleton mientras carga ����
+  if (loadingDetalle && !canchaDetalle) {
+    return (
+      <>
+        <div className="grid grid-cols-3 gap-4 mb-6">
+          {[1, 2, 3].map((i) => (
+            <div
+              key={i}
+              className={`rounded-xl p-4 animate-pulse ${
+                isLight ? 'bg-slate-100' : 'bg-[#161618]'
+              }`}
+            >
+              <div className={`h-3 w-20 rounded mb-3 ${isLight ? 'bg-slate-200' : 'bg-white/10'}`} />
+              <div className={`h-6 w-16 rounded ${isLight ? 'bg-slate-200' : 'bg-white/10'}`} />
+            </div>
+          ))}
+        </div>
+        <div className={`rounded-xl p-4 ${isLight ? 'bg-white border border-slate-100' : ''}`}>
+          <div className="space-y-3">
+            {[1, 2, 3, 4].map((i) => (
+              <div
+                key={i}
+                className={`h-10 rounded-lg animate-pulse ${
+                  isLight ? 'bg-slate-100' : 'bg-white/[0.04]'
+                }`}
+              />
+            ))}
+          </div>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
+      {/* ���� Métricas ���� */}
       <div className="grid grid-cols-3 gap-4 mb-6">
-        <TarjetaMetrica titulo="Ocupación Hoy" valor="78%" progreso={78} tormentaActiva={isRainModeActive} isLight={isLight} />
         <TarjetaMetrica
-          titulo="Horas Disponibles"
-          valor={`${horasDisponibles} hora${horasDisponibles !== 1 ? 's' : ''}`}
+          titulo={esHoy ? 'Ocupación Hoy' : 'Ocupación del Día'}
+          valor={ocupacion !== null ? `${ocupacion}%` : '�'}
+          progreso={ocupacion ?? undefined}
           tormentaActiva={isRainModeActive}
           isLight={isLight}
         />
-        <TarjetaMetrica titulo="Ingresos Estimados" valor="$320,000 COP" tormentaActiva={isRainModeActive} isLight={isLight} />
+        <TarjetaMetrica
+          titulo="Horas Disponibles"
+          valor={`${horasDisp} hora${horasDisp !== 1 ? 's' : ''}`}
+          tormentaActiva={isRainModeActive}
+          isLight={isLight}
+        />
+        <TarjetaMetrica
+          titulo="Ingresos Estimados"
+          valor={
+            ingresos > 0
+              ? `$${ingresos.toLocaleString('es-CO')} COP`
+              : '$0 COP'
+          }
+          tormentaActiva={isRainModeActive}
+          isLight={isLight}
+        />
       </div>
 
       <div
@@ -2322,26 +2168,83 @@ function SeccionGeneral({ canchaSlug }) {
               : ''
         }`}
       >
-        <div className="flex items-baseline justify-between mb-4">
+        {/* ���� Cabecera agenda + navegador de fecha ���� */}
+        <div className="flex items-center justify-between mb-4 gap-3">
           <h3
-            className={`text-sm font-medium transition-colors duration-300 ${
+            className={`text-sm font-medium shrink-0 transition-colors duration-300 ${
               isLight ? 'text-slate-900' : 'text-white'
             }`}
           >
             Agenda del Día
           </h3>
-          <span
-            className={`text-xs capitalize transition-colors duration-300 ${
-              isLight ? 'text-slate-500' : 'text-zinc-500'
-            }`}
-          >
-            {fechaHoy}
-          </span>
+
+          {/* Navegador de fecha */}
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => onFechaCambio(navegarDia(fechaSeleccionada, -1))}
+              className={`p-1 rounded transition-colors ${
+                isLight
+                  ? 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
+                  : 'text-zinc-500 hover:text-white hover:bg-white/[0.06]'
+              }`}
+              aria-label="Día anterior"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+
+            <span
+              className={`text-xs capitalize select-none transition-colors duration-300 ${
+                esHoy
+                  ? isLight ? 'text-emerald-600 font-medium' : 'text-[#00FF66] font-medium'
+                  : isLight ? 'text-slate-500' : 'text-zinc-500'
+              }`}
+            >
+              {esHoy ? 'Hoy · ' : ''}{fechaDisplay}
+            </span>
+
+            <button
+              type="button"
+              onClick={() => onFechaCambio(navegarDia(fechaSeleccionada, 1))}
+              className={`p-1 rounded transition-colors ${
+                isLight
+                  ? 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
+                  : 'text-zinc-500 hover:text-white hover:bg-white/[0.06]'
+              }`}
+              aria-label="Día siguiente"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+
+            {!esHoy && (
+              <button
+                type="button"
+                onClick={() => onFechaCambio(fechaHoyBogota())}
+                className={`ml-1 text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
+                  isLight
+                    ? 'border-emerald-300 text-emerald-600 hover:bg-emerald-50'
+                    : 'border-[#00FF66]/30 text-[#00FF66] hover:bg-[#00FF66]/10'
+                }`}
+              >
+                Hoy
+              </button>
+            )}
+
+            {loadingDetalle && (
+              <span className={`ml-1 text-[10px] ${isLight ? 'text-slate-400' : 'text-zinc-600'}`}>
+                � �
+              </span>
+            )}
+          </div>
         </div>
 
         {isRainModeActive && (
           <div className="mb-4 flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg border border-cyan-400/20 bg-cyan-500/[0.06] shadow-[0_0_18px_rgba(56,189,248,0.1)]">
-            <span className="text-sm">🌧️</span>
+            <span className="text-sm">�xR�️</span>
             <p className="text-[11px] text-cyan-200/90 leading-snug">
               Modo Lluvia activo · {descripcionActiva}. Las reservas del bloque quedan
               marcadas para reagendamiento.
@@ -2357,7 +2260,7 @@ function SeccionGeneral({ canchaSlug }) {
                 : 'border-amber-500/20 bg-amber-500/[0.06]'
             }`}
           >
-            <span className="text-sm">🔒</span>
+            <span className="text-sm">�x</span>
             <p
               className={`text-[11px] leading-snug ${
                 isLight ? 'text-amber-800/90' : 'text-amber-200/90'
@@ -2373,8 +2276,16 @@ function SeccionGeneral({ canchaSlug }) {
           </div>
         )}
 
+        {/* Sin horario configurado */}
+        {!loadingDetalle && agendaLocal.length === 0 && (
+          <div className={`py-10 text-center ${isLight ? 'text-slate-400' : 'text-zinc-600'}`}>
+            <p className="text-sm mb-1">Sin horario configurado para este día</p>
+            <p className="text-xs">El complejo no tiene horario registrado para la fecha seleccionada.</p>
+          </div>
+        )}
+
         <div className="space-y-2">
-          {agenda.map((slot) =>
+          {agendaLocal.map((slot) =>
             slot.tipo === 'ocupada' ? (
               <FilaOcupada
                 key={slot.id}
@@ -2397,22 +2308,14 @@ function SeccionGeneral({ canchaSlug }) {
                 onColapsar={colapsarFila}
                 onAgendar={agendarReserva}
                 canchaSlug={canchaSlug}
+                fechaSeleccionada={fechaSeleccionada}
                 isLight={isLight}
+                complejoId={complejoId}
               />
             )
           )}
         </div>
       </div>
-
-      <p
-        className={`mt-8 pt-6 border-t text-xs transition-all duration-300 ${
-          isLight
-            ? 'border-slate-100 text-slate-500'
-            : 'border-white/5 text-zinc-500'
-        }`}
-      >
-        Estructura: Techada • Iluminación: LED • Último Mantenimiento: Hace 12 días
-      </p>
     </>
   );
 }
@@ -2465,11 +2368,23 @@ function CentroControl({ canchaSlug }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { isLight } = useAccessibility();
+  const { state, dispatch } = useAppContext();
 
-  const [nombreCancha, setNombreCancha] = useState(() => obtenerNombreCancha(canchaSlug));
+  // Detalle de cancha cargado desde la API
+  const [canchaDetalle, setCanchaDetalle] = useState(null);
+  const [loadingDetalle, setLoadingDetalle] = useState(false);
+
+  // Fecha seleccionada para el filtro (YYYY-MM-DD, por defecto hoy en Bogotá)
+  const [fechaSeleccionada, setFechaSeleccionada] = useState(fechaHoyBogota);
+
+  const [nombreCancha, setNombreCancha] = useState(() =>
+    obtenerNombreCancha(canchaSlug, state.canchas)
+  );
   const [editandoNombre, setEditandoNombre] = useState(false);
   const [nombreTemporal, setNombreTemporal] = useState('');
   const [esFavorito, setEsFavorito] = useState(false);
+  const [idConfiguracionFavorita, setIdConfiguracionFavorita] = useState(null);
+  const [guardandoFavorito, setGuardandoFavorito] = useState(false);
   const [canchaActiva, setCanchaActiva] = useState(true);
   const [menuAbierto, setMenuAbierto] = useState(false);
   const [menuHaciaArriba, setMenuHaciaArriba] = useState(false);
@@ -2481,11 +2396,105 @@ function CentroControl({ canchaSlug }) {
 
   const pestanaActiva = obtenerPestanaDesdeRuta(location.pathname, canchaSlug);
 
+  // Mantener pestañas visitadas montadas para evitar recargas al cambiar de tab
+  const [pestanasMontadas, setPestanasMontadas] = useState(
+    () => new Set([pestanaActiva])
+  );
+
   useEffect(() => {
-    setNombreCancha(obtenerNombreCancha(canchaSlug));
+    setPestanasMontadas((prev) => {
+      if (prev.has(pestanaActiva)) return prev;
+      return new Set([...prev, pestanaActiva]);
+    });
+  }, [pestanaActiva]);
+
+  // complejoId estable como primitivo (número)
+  const complejoId = state.user?.complejos?.[0]?.id ?? null;
+
+  // Al cambiar de cancha: resetear panel y volver a hoy (sin depender de state.canchas)
+  useEffect(() => {
+    setNombreCancha(obtenerNombreCancha(canchaSlug, state.canchas));
     setEditandoNombre(false);
     setPanelAbierto(false);
+    setCanchaDetalle(null);
+    setFechaSeleccionada(fechaHoyBogota());
+    setPestanasMontadas(new Set([pestanaActiva]));
+    
+    // Verificar si esta cancha tiene configuración favorita en el backend
+    const verificarFavorito = async () => {
+      const canchaId = extraerCanchaId(canchaSlug);
+      if (!canchaId || Number.isNaN(canchaId)) return;
+      
+      try {
+        const token = localStorage.getItem('token');
+        const response = await axiosInstance.get(
+          `/api/precios/favoritos/cancha/${canchaId}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        
+        const favorito = response.data?.data;
+        if (response.data.success && favorito && Number(favorito.cancha_id) === canchaId) {
+          setEsFavorito(true);
+          setIdConfiguracionFavorita(favorito.id);
+        } else {
+          setEsFavorito(false);
+          setIdConfiguracionFavorita(null);
+        }
+      } catch (error) {
+        console.error('Error al verificar favorito:', error);
+        setEsFavorito(false);
+        setIdConfiguracionFavorita(null);
+      }
+    };
+    
+    verificarFavorito();
   }, [canchaSlug]);
+
+  // Actualizar nombre cuando el listado global de canchas termine de cargar
+  useEffect(() => {
+    if (state.canchas.length === 0) return;
+    setNombreCancha(obtenerNombreCancha(canchaSlug, state.canchas));
+  }, [canchaSlug, state.canchas]);
+
+  // Mismo patrón que principalDashboard: useCallback + axiosInstance + localStorage
+  const cargarDetalleCancha = useCallback(async () => {
+    if (!canchaSlug || !complejoId) return;
+
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    setLoadingDetalle(true);
+    try {
+      const response = await axiosInstance.get(
+        `/api/dashboard/${complejoId}/${canchaSlug}`,
+        {
+          params: { fecha: fechaSeleccionada },
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      if (response.data.success) {
+        setCanchaDetalle(response.data);
+        if (response.data.cancha?.nombre) {
+          setNombreCancha(response.data.cancha.nombre);
+        }
+        if (response.data.cancha?.state) {
+          setCanchaActiva(
+            ['DISPONIBLE', 'OCUPADA'].includes(response.data.cancha.state)
+          );
+        }
+      }
+    } catch (err) {
+      console.error('[CentroControl] Error cargando detalle cancha:', err);
+    } finally {
+      setLoadingDetalle(false);
+    }
+  }, [canchaSlug, complejoId, fechaSeleccionada]);
+
+  // Dispara la carga cada vez que cambia la función (cancha, complejo o fecha)
+  useEffect(() => {
+    cargarDetalleCancha();
+  }, [cargarDetalleCancha]);
 
   useEffect(() => {
     if (editandoNombre && inputRef.current) {
@@ -2517,15 +2526,220 @@ function CentroControl({ canchaSlug }) {
     navigate(ruta);
   };
 
+  const handleEditarPrecios = () => {
+    cerrarMenu();
+    navegarPestana('Precios');
+  };
+
+  const handleVerActividad = () => {
+    cerrarMenu();
+    navegarPestana('Actividad');
+  };
+
+  const handlePausarMantenimiento = async () => {
+    cerrarMenu();
+    try {
+      const canchaId = extraerCanchaId(canchaSlug);
+      const token = localStorage.getItem('token');
+      const nuevoEstado = canchaActiva ? 'MANTENIMIENTO' : 'DISPONIBLE';
+      
+      const response = await axiosInstance.patch(
+        `/api/courts/${canchaId}/estado`,
+        { estado: nuevoEstado },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      if (response.data.success) {
+        setCanchaActiva(!canchaActiva);
+        // Actualizar el estado global
+        dispatch(updateCanchaEstado(canchaId, nuevoEstado));
+        console.log(`Cancha cambiada a estado: ${nuevoEstado}`);
+      }
+    } catch (error) {
+      console.error('Error al cambiar estado de cancha:', error);
+    }
+  };
+
+  const handleEliminarCancha = async () => {
+    cerrarMenu();
+    const confirmar = window.confirm('¿Estás seguro de que deseas eliminar esta cancha? Esta acción no se puede deshacer.');
+    
+    if (!confirmar) return;
+
+    try {
+      const canchaId = extraerCanchaId(canchaSlug);
+      const token = localStorage.getItem('token');
+      const response = await axiosInstance.patch(
+        `/api/courts/${canchaId}/estado`,
+        { estado: 'ELIMINADA' },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      if (response.data.success) {
+        // Actualizar el estado global
+        dispatch(updateCanchaEstado(canchaId, 'ELIMINADA'));
+        console.log('Cancha eliminada (soft delete)');
+        // Navegar al listado de canchas o al dashboard
+        navigate('/canchas');
+      }
+    } catch (error) {
+      console.error('Error al eliminar cancha:', error);
+    }
+  };
+
+  const handleGuardarEnFavoritos = async () => {
+    if (guardandoFavorito) return;
+    
+    setGuardandoFavorito(true);
+    cerrarMenu();
+    
+    try {
+      const canchaId = extraerCanchaId(canchaSlug);
+      const token = localStorage.getItem('token');
+      
+      if (esFavorito && idConfiguracionFavorita) {
+        // Eliminar de favoritos
+        const response = await axiosInstance.delete(
+          `/api/precios/favoritos/${idConfiguracionFavorita}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        
+        if (response.data.success) {
+          setEsFavorito(false);
+          setIdConfiguracionFavorita(null);
+          console.log('Configuración eliminada de favoritos');
+        }
+      } else {
+        // Obtener la configuración actual de precios de la cancha
+        const preciosResponse = await axiosInstance.get(
+          `/api/canchas/${canchaId}/precios`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        
+        if (!preciosResponse.data.success || !preciosResponse.data.data.bloques) {
+          alert('No hay configuración de precios para guardar en favoritos');
+          setGuardandoFavorito(false);
+          return;
+        }
+        
+        const bloques = preciosResponse.data.data.bloques;
+        
+        // Obtener el nombre de la cancha
+        const nombreCancha = canchaDetalle?.nombre || `Cancha ${canchaId}`;
+        
+        // Crear configuración favorita
+        const response = await axiosInstance.post(
+          '/api/precios/favoritos',
+          {
+            complejo_id: complejoId,
+            cancha_id: canchaId,
+            nombre_plantilla: `Config. ${nombreCancha}`,
+            configuracion: { bloques }
+          },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        
+        if (response.data.success) {
+          setEsFavorito(true);
+          setIdConfiguracionFavorita(response.data.data.id);
+          console.log('Configuración guardada en favoritos');
+        }
+      }
+    } catch (error) {
+      console.error('Error al manejar favoritos:', error);
+      alert('Error al guardar/eliminar de favoritos. Por favor, intenta nuevamente.');
+    } finally {
+      setGuardandoFavorito(false);
+    }
+  };
+
+  const handleClonarCancha = async () => {
+    cerrarMenu();
+
+    try {
+      const canchaId = extraerCanchaId(canchaSlug);
+      const token = localStorage.getItem('token');
+      const response = await axiosInstance.post(
+        `/api/courts/${canchaId}/clonar`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      if (response.data.success) {
+        console.log('Cancha clonada exitosamente:', response.data.data);
+        
+        // Recargar la lista de canchas del complejo sin refrescar la página
+        if (complejoId) {
+          const canchasResponse = await axiosInstance.get(`/api/courts/complex/${complejoId}`);
+          if (canchasResponse.data.success) {
+            // Actualizar el estado global con la nueva lista de canchas
+            dispatch({ type: 'SET_CANCHAS', payload: canchasResponse.data.data });
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error al clonar cancha:', error);
+    }
+  };
+
   const iniciarEdicion = () => {
     setNombreTemporal(nombreCancha);
     setEditandoNombre(true);
   };
 
-  const guardarNombre = () => {
+  const handleCambiarEstadoCancha = async (nuevoEstado) => {
+    try {
+      const canchaId = extraerCanchaId(canchaSlug);
+      const token = localStorage.getItem('token');
+      const estadoAPI = nuevoEstado ? 'DISPONIBLE' : 'NO DISPONIBLE';
+      
+      const response = await axiosInstance.patch(
+        `/api/courts/${canchaId}/estado`,
+        { estado: estadoAPI },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      if (response.data.success) {
+        setCanchaActiva(nuevoEstado);
+        // Actualizar el estado global para que se refleje en todos los componentes
+        dispatch(updateCanchaEstado(canchaId, estadoAPI));
+        console.log(`Cancha cambiada a estado: ${estadoAPI}`);
+      }
+    } catch (error) {
+      console.error('Error al cambiar estado de cancha:', error);
+    }
+  };
+
+  const guardarNombre = async () => {
     const nombreFinal = nombreTemporal.trim() || nombreCancha;
+    
+    // Actualizar estado local inmediatamente para mejor UX
     setNombreCancha(nombreFinal);
     setEditandoNombre(false);
+
+    // Llamar a la API para actualizar en el backend
+    try {
+      const canchaId = extraerCanchaId(canchaSlug);
+      const token = localStorage.getItem('token');
+      const response = await axiosInstance.patch(
+        `/api/courts/${canchaId}/nombre`,
+        { nombre: nombreFinal },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      if (response.data.success) {
+        // Actualizar el contexto global para reflejar el cambio en toda la app
+        dispatch(updateCanchaNombre(canchaId, nombreFinal));
+        console.log('Nombre de cancha actualizado exitosamente');
+      }
+    } catch (error) {
+      console.error('Error al actualizar nombre de cancha:', error);
+      // Revertir el cambio local si falla
+      const canchaOriginal = state.canchas?.find(c => `cancha-${c.id}` === canchaSlug);
+      if (canchaOriginal) {
+        setNombreCancha(canchaOriginal.nombre);
+      }
+    }
   };
 
   const handleMenuToggle = (e) => {
@@ -2595,11 +2809,14 @@ function CentroControl({ canchaSlug }) {
           <button
             type="button"
             aria-label={esFavorito ? 'Quitar de favoritos' : 'Añadir a favoritos'}
-            onClick={() => setEsFavorito((prev) => !prev)}
+            onClick={handleGuardarEnFavoritos}
+            disabled={guardandoFavorito}
             className={`shrink-0 p-1 rounded transition-colors duration-300 ${
-              isLight
-                ? 'text-slate-400 hover:text-emerald-600'
-                : 'text-zinc-600 hover:text-[#00FF66]'
+              guardandoFavorito 
+                ? 'opacity-50 cursor-not-allowed' 
+                : isLight
+                  ? 'text-slate-400 hover:text-emerald-600'
+                  : 'text-zinc-600 hover:text-[#00FF66]'
             }`}
           >
             <Star
@@ -2642,23 +2859,71 @@ function CentroControl({ canchaSlug }) {
                 <button
                   type="button"
                   role="menuitem"
-                  onClick={cerrarMenu}
+                  onClick={() => {
+                    cerrarMenu();
+                    iniciarEdicion();
+                  }}
                   className="w-full text-left px-3 py-1.5 text-xs text-zinc-300 hover:bg-white/5 hover:text-white transition-colors"
                 >
-                  Editar precios
+                  Editar nombre
                 </button>
                 <button
                   type="button"
                   role="menuitem"
-                  onClick={cerrarMenu}
+                  onClick={handleEditarPrecios}
                   className="w-full text-left px-3 py-1.5 text-xs text-zinc-300 hover:bg-white/5 hover:text-white transition-colors"
                 >
-                  Pausar por mantenimiento
+                  Editar horarios y precios
                 </button>
                 <button
                   type="button"
                   role="menuitem"
-                  onClick={cerrarMenu}
+                  onClick={handleGuardarEnFavoritos}
+                  disabled={guardandoFavorito}
+                  className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-1.5 transition-colors ${
+                    guardandoFavorito
+                      ? 'opacity-50 cursor-not-allowed text-zinc-500'
+                      : esFavorito
+                        ? 'text-[#00FF66] hover:bg-white/5 hover:text-emerald-400'
+                        : 'text-zinc-300 hover:bg-white/5 hover:text-white'
+                  }`}
+                >
+                  <Star 
+                    size={12} 
+                    strokeWidth={1.5}
+                    className={esFavorito ? 'fill-[#00FF66]' : ''}
+                  />
+                  {esFavorito ? 'Quitar de favoritos' : 'Guardar en favoritos'}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={handleVerActividad}
+                  className="w-full text-left px-3 py-1.5 text-xs text-zinc-300 hover:bg-white/5 hover:text-white transition-colors"
+                >
+                  Análisis y estadísticas
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={handleClonarCancha}
+                  className="w-full text-left px-3 py-1.5 text-xs text-zinc-300 hover:bg-white/5 hover:text-white transition-colors"
+                >
+                  Copiar / Clonar cancha
+                </button>
+                <div className="my-1 mx-2 border-t border-white/10" />
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={handlePausarMantenimiento}
+                  className="w-full text-left px-3 py-1.5 text-xs text-zinc-300 hover:bg-white/5 hover:text-white transition-colors"
+                >
+                  {canchaActiva ? 'Pausar por mantenimiento' : 'Activar cancha'}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={handleEliminarCancha}
                   className="w-full text-left px-3 py-1.5 text-xs text-zinc-300 hover:bg-white/5 hover:text-red-400 transition-colors"
                 >
                   Eliminar cancha
@@ -2688,7 +2953,7 @@ function CentroControl({ canchaSlug }) {
 
           <ToggleSwitch
             activo={canchaActiva}
-            onChange={setCanchaActiva}
+            onChange={handleCambiarEstadoCancha}
             etiquetaActiva="Activa"
             etiquetaInactiva="Inactiva"
           />
@@ -2747,13 +3012,38 @@ function CentroControl({ canchaSlug }) {
 
       <div className="flex-1 flex min-h-0 relative overflow-hidden">
         <div className="flex-1 overflow-y-auto p-6 min-w-0">
-          {pestanaActiva === 'General' && <SeccionGeneral canchaSlug={canchaSlug} />}
-          {pestanaActiva === 'Reservas' && <SeccionReservas />}
-          {pestanaActiva === 'Precios' && (
-            <SeccionPrecios nombreCancha={nombreCancha} />
+          {pestanasMontadas.has('General') && (
+            <div hidden={pestanaActiva !== 'General'}>
+              <SeccionGeneral
+                canchaSlug={canchaSlug}
+                canchaDetalle={canchaDetalle}
+                loadingDetalle={loadingDetalle}
+                fechaSeleccionada={fechaSeleccionada}
+                onFechaCambio={setFechaSeleccionada}
+                complejoId={complejoId}
+                onRecargarDatos={cargarDetalleCancha}
+              />
+            </div>
           )}
-          {pestanaActiva === 'Actividad' && (
-            <SeccionActividad nombreCancha={nombreCancha} />
+          {pestanasMontadas.has('Reservas') && (
+            <div hidden={pestanaActiva !== 'Reservas'}>
+              <SeccionReservas
+                canchaSlug={canchaSlug}
+                complejoId={complejoId}
+                reservasSemana={canchaDetalle?.reservas_semana ?? null}
+                loadingDetalle={loadingDetalle}
+              />
+            </div>
+          )}
+          {pestanasMontadas.has('Precios') && (
+            <div hidden={pestanaActiva !== 'Precios'}>
+              <SeccionPrecios nombreCancha={nombreCancha} />
+            </div>
+          )}
+          {pestanasMontadas.has('Actividad') && (
+            <div hidden={pestanaActiva !== 'Actividad'}>
+              <SeccionActividad nombreCancha={nombreCancha} />
+            </div>
           )}
         </div>
 

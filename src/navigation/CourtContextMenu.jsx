@@ -1,5 +1,6 @@
 import { createPortal } from 'react-dom';
 import { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Star,
   Circle,
@@ -71,6 +72,7 @@ function MenuItem({ icon: Icon, iconClassName, children, onClick, variant = 'def
 
 function CourtContextMenu({
   courtName,
+  courtId,
   direction = 'abajo',
   position,
   isFavorite,
@@ -80,6 +82,8 @@ function CourtContextMenu({
   onClose,
   onAction,
 }) {
+  const navigate = useNavigate();
+  
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') onClose();
@@ -87,6 +91,16 @@ function CourtContextMenu({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
+
+  const handleEditarHorarios = () => {
+    onClose();
+    navigate(`/canchas/${courtId}/precios`);
+  };
+
+  const handleAnalisis = () => {
+    onClose();
+    navigate(`/canchas/${courtId}/actividad`);
+  };
 
   const originClass =
     direction === 'arriba' ? 'origin-bottom-left' : 'origin-top-left';
@@ -155,15 +169,15 @@ function CourtContextMenu({
           Cambiar nombre
         </MenuItem>
         <MenuItem icon={Copy} onClick={() => onAction('copiar')}>
-          Copiar
+          Copiar / Clonar cancha
         </MenuItem>
-        <MenuItem icon={CalendarClock} onClick={() => onAction('editar-horarios-precios')}>
+        <MenuItem icon={CalendarClock} onClick={handleEditarHorarios}>
           Editar horarios y precios
         </MenuItem>
 
         <MenuDivider />
 
-        <MenuItem icon={BarChart2} onClick={() => onAction('analisis')}>
+        <MenuItem icon={BarChart2} onClick={handleAnalisis}>
           Análisis y estadísticas
         </MenuItem>
 

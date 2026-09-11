@@ -5,7 +5,10 @@ import {
   SET_ERROR,
   CLEAR_ERROR,
   SET_DASHBOARD_DATA,
-  UPDATE_DASHBOARD_DATA
+  UPDATE_DASHBOARD_DATA,
+  SET_CANCHAS,
+  UPDATE_CANCHA_NOMBRE,
+  UPDATE_CANCHA_ESTADO
 } from './types';
 
 // Estado inicial
@@ -14,7 +17,8 @@ export const initialState = {
   isAuthenticated: false,
   loading: false,
   error: null,
-  dashboardData: null
+  dashboardData: null,
+  canchas: []
 };
 
 // Reducer principal
@@ -33,7 +37,8 @@ export const appReducer = (state = initialState, action) => {
         ...state,
         user: null,
         isAuthenticated: false,
-        dashboardData: null
+        dashboardData: null,
+        canchas: []
       };
 
     case SET_LOADING:
@@ -69,6 +74,32 @@ export const appReducer = (state = initialState, action) => {
           ...state.dashboardData,
           ...action.payload
         }
+      };
+
+    case SET_CANCHAS:
+      return {
+        ...state,
+        canchas: action.payload
+      };
+
+    case UPDATE_CANCHA_NOMBRE:
+      return {
+        ...state,
+        canchas: state.canchas.map(cancha =>
+          cancha.id === action.payload.canchaId
+            ? { ...cancha, nombre: action.payload.nombre }
+            : cancha
+        )
+      };
+
+    case UPDATE_CANCHA_ESTADO:
+      return {
+        ...state,
+        canchas: state.canchas.map(cancha =>
+          cancha.id === action.payload.canchaId
+            ? { ...cancha, state: action.payload.estado }
+            : cancha
+        )
       };
 
     default:

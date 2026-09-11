@@ -2,7 +2,8 @@ import { useState, useRef, useEffect } from 'react';
 
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 
-import { Sidebar } from '../navigation';
+import { Sidebar, MobileBottomNav, MobileFab, MobileSettingsSheet } from '../navigation';
+import { MobileLayoutProvider } from '../estados/MobileLayoutContext';
 
 import Cancha from './canchas/cancha';
 import PrincipalDashboard from './principal/principalDashboard';
@@ -15,6 +16,20 @@ import HotEdgeSidebar from './HotEdgeSidebar';
 import RainEffect, { LUXURY_STORM_GLASS } from './RainEffect';
 import { useRainMode } from '../estados/RainModeContext';
 import { useAccessibility } from '../estados/AccessibilityContext';
+import { useAppContext } from '../estados/AppContext';
+import { setCanchas } from '../estados/actions';
+import { dashboardService } from '../api/services';
+import { getStoredSession } from '../api/auth';
+
+
+
+/** Clave estable para el panel principal: ignora sub-rutas de pestañas en /canchas */
+function obtenerClaveContenido(pathname, canchaSlug) {
+  if (pathname.startsWith('/canchas')) {
+    return canchaSlug ? `/canchas/${canchaSlug}` : '/canchas';
+  }
+  return pathname;
+}
 
 
 
@@ -26,7 +41,7 @@ function Dashboard() {
 
   const { canchaSlug } = useParams();
 
-
+  const { state, dispatch } = useAppContext();
 
   const [selectedNav, setSelectedNav] = useState('Panel');
 
@@ -35,6 +50,8 @@ function Dashboard() {
   const [sidebarWidth, setSidebarWidth] = useState(25);
 
   const [isResizing, setIsResizing] = useState(false);
+
+  const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
 
   const sidebarRef = useRef(null);
 
@@ -46,6 +63,8 @@ function Dashboard() {
   const isFinanceRoute = location.pathname === '/finance';
   const isBillingRoute = location.pathname === '/billing';
   const isWebConfigRoute = location.pathname === '/web-config';
+
+  const claveContenido = obtenerClaveContenido(location.pathname, canchaSlug);
 
   const claseFondoShell = isRainModeActive
     ? 'bg-[#050810]'
@@ -66,6 +85,31 @@ function Dashboard() {
       : 'min-h-0 min-w-0 w-full flex-1 bg-[#111111] rounded-2xl border border-[#1f1f23] flex flex-col overflow-hidden transition-all duration-300';
 
 
+
+  // Cargar canchas del complejo desde la API al montar (una sola vez por sesión)
+  useEffect(() => {
+    if (!state.isAuthenticated) return;
+    if (state.canchas && state.canchas.length > 0) return;
+
+    const complejos = state.user?.complejos;
+    if (!complejos || complejos.length === 0) return;
+
+    const complejoId = complejos[0].id;
+    const session = getStoredSession();
+    if (!session?.token) return;
+
+    dashboardService.init(complejoId, session.token)
+      .then(data => {
+        if (data.success && Array.isArray(data.canchas)) {
+          dispatch(setCanchas(data.canchas));
+        }
+      })
+      .catch(err => console.error('[Dashboard] Error cargando canchas:', err));
+  }, [state.isAuthenticated, state.user, state.canchas, dispatch]);
+
+  useEffect(() => {
+    setMobileSettingsOpen(false);
+  }, [location.pathname]);
 
   useEffect(() => {
     const { pathname } = location;
@@ -117,9 +161,8 @@ function Dashboard() {
 
 
   const handleSelectCourt = (courtId) => {
-
+    // Navegar usando solo el ID numérico
     navigate(`/canchas/${courtId}`);
-
   };
 
 
@@ -194,9 +237,11 @@ function Dashboard() {
 
   return (
 
+    <MobileLayoutProvider>
+
     <div
 
-      className={`zyra-app-shell fixed inset-0 h-screen w-screen overflow-hidden transition-all duration-300 ${claseFondoShell}`}
+      className={`zyra-app-shell fixed inset-0 w-full overflow-hidden transition-all duration-300 ${claseFondoShell}`}
 
       style={{ userSelect: isResizing ? 'none' : 'auto' }}
 
@@ -213,7 +258,7 @@ function Dashboard() {
           <LandingPageDashboard />
         </div>
       ) : (
-      <div className="relative z-10 grid h-full w-full min-h-0 grid-cols-[auto_1fr] overflow-hidden">
+      <div className="relative z-10 grid h-full w-full min-h-0 grid-cols-1 overflow-hidden md:grid-cols-[auto_1fr]">
 
       <Sidebar
 
@@ -243,14 +288,14 @@ function Dashboard() {
 
       <main
 
-        className={`flex h-full min-h-0 min-w-0 flex-col overflow-x-hidden overflow-y-auto px-3 pt-0 pb-3 sm:px-4 ${claseAreaPrincipal}`}
+        className={`flex h-full min-h-0 min-w-0 flex-col overflow-x-hidden overflow-y-auto px-2 pt-1 pb-content-mobile-nav md:px-4 md:pb-3 md:pt-0 ${claseAreaPrincipal}`}
 
       >
 
         <div className={clasePanelPrincipal}>
 
           <div
-            key={location.pathname}
+            key={claveContenido}
             className="flex flex-1 min-h-0 flex-col overflow-hidden animate-fade-in"
           >
             {isCanchasRoute ? (
@@ -282,7 +327,24 @@ function Dashboard() {
 
       {!isWebConfigRoute && <HotEdgeSidebar />}
 
+      {!isWebConfigRoute && (
+        <>
+          <MobileBottomNav
+            settingsOpen={mobileSettingsOpen}
+            onSettingsOpen={() => setMobileSettingsOpen(true)}
+            onSettingsClose={() => setMobileSettingsOpen(false)}
+          />
+          <MobileFab />
+          <MobileSettingsSheet
+            open={mobileSettingsOpen}
+            onClose={() => setMobileSettingsOpen(false)}
+          />
+        </>
+      )}
+
     </div>
+
+    </MobileLayoutProvider>
 
   );
 

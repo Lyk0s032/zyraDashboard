@@ -10,7 +10,12 @@ function TokenDebugger() {
     checkToken();
   }, []);
 
-  const ocultoEnStudio = location.pathname === '/web-config';
+  const ocultoEnStudio =
+    location.pathname === '/web-config' ||
+    location.pathname === '/' ||
+    location.pathname === '/privacidad' ||
+    location.pathname === '/signIn' ||
+    location.pathname === '/login';
 
   const checkToken = () => {
     const token = localStorage.getItem('token');
@@ -73,44 +78,49 @@ function TokenDebugger() {
 
   if (!visible) {
     return (
-      <button
-        onClick={() => setVisible(true)}
-        style={{
-          position: 'fixed',
-          bottom: '20px',
-          right: '20px',
-          padding: '10px 15px',
-          backgroundColor: tokenInfo?.hasToken && !tokenInfo?.expired ? '#27ae60' : '#e74c3c',
-          color: 'white',
-          border: 'none',
-          borderRadius: '50%',
-          cursor: 'pointer',
-          fontSize: '20px',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
-          zIndex: 999,
-          width: '50px',
-          height: '50px'
-        }}
-        title="Ver estado de autenticación"
-      >
-        🔐
-      </button>
+      <div className="hidden md:block">
+        <button
+          onClick={() => setVisible(true)}
+          style={{
+            position: 'fixed',
+            bottom: '20px',
+            right: '20px',
+            padding: '10px 15px',
+            backgroundColor: tokenInfo?.hasToken && !tokenInfo?.expired ? '#27ae60' : '#e74c3c',
+            color: 'white',
+            border: 'none',
+            borderRadius: '50%',
+            cursor: 'pointer',
+            fontSize: '20px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+            zIndex: 999,
+            width: '50px',
+            height: '50px',
+          }}
+          title="Ver estado de autenticación"
+        >
+          🔐
+        </button>
+      </div>
     );
   }
 
   return (
-    <div style={{
-      position: 'fixed',
-      bottom: '20px',
-      right: '20px',
-      backgroundColor: 'white',
-      border: '2px solid #ddd',
-      borderRadius: '10px',
-      padding: '20px',
-      boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-      maxWidth: '350px',
-      zIndex: 999
-    }}>
+    <div className="hidden md:block">
+      <div
+        style={{
+          position: 'fixed',
+          bottom: '20px',
+          right: '20px',
+          backgroundColor: 'white',
+          border: '2px solid #ddd',
+          borderRadius: '10px',
+          padding: '20px',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+          maxWidth: '350px',
+          zIndex: 999,
+        }}
+      >
       <div style={{
         display: 'flex',
         justifyContent: 'space-between',
@@ -258,6 +268,7 @@ function TokenDebugger() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

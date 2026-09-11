@@ -5,7 +5,10 @@ import {
   SET_ERROR,
   CLEAR_ERROR,
   SET_DASHBOARD_DATA,
-  UPDATE_DASHBOARD_DATA
+  UPDATE_DASHBOARD_DATA,
+  SET_CANCHAS,
+  UPDATE_CANCHA_NOMBRE,
+  UPDATE_CANCHA_ESTADO
 } from './types';
 
 // Actions para el usuario
@@ -42,4 +45,20 @@ export const setDashboardData = (data) => ({
 export const updateDashboardData = (data) => ({
   type: UPDATE_DASHBOARD_DATA,
   payload: data
+});
+
+// Actions para canchas
+export const setCanchas = (canchas) => ({
+  type: SET_CANCHAS,
+  payload: canchas
+});
+
+export const updateCanchaNombre = (canchaId, nombre) => ({
+  type: UPDATE_CANCHA_NOMBRE,
+  payload: { canchaId, nombre }
+});
+
+export const updateCanchaEstado = (canchaId, estado) => ({
+  type: UPDATE_CANCHA_ESTADO,
+  payload: { canchaId, estado }
 });

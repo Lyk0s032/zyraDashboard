@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAppContext } from '../estados/AppContext';
 import { setUser } from '../estados/actions';
 import { login as authLogin } from '../api/auth';
@@ -12,30 +12,35 @@ function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
     setError('');
     setLoading(true);
 
-    const result = authLogin(username, password);
+    try {
+      const result = await authLogin(username, password);
 
-    if (!result.success) {
-      setError(result.error);
+      if (!result.success) {
+        setError(result.error);
+        setLoading(false);
+        return;
+      }
+
+      dispatch(setUser(result.user));
+      navigate('/dashboard', { replace: true });
+    } catch (error) {
+      setError('Error inesperado al iniciar sesión');
       setLoading(false);
-      return;
     }
-
-    dispatch(setUser(result.user));
-    navigate('/dashboard', { replace: true });
   };
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-[#111111] px-4">
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#00FF66]">
+          <Link to="/" className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#00FF66]">
             <span className="text-sm font-bold text-black">ZR</span>
-          </div>
+          </Link>
           <h1 className="text-2xl font-semibold text-white">ZYRA</h1>
           <p className="mt-2 text-sm text-[#6b6b7b]">
             Inicia sesión en tu panel de control
@@ -52,17 +57,17 @@ function Login() {
                 htmlFor="username"
                 className="mb-2 block text-sm font-medium text-[#9ca3af]"
               >
-                Usuario
+                Teléfono
               </label>
               <input
                 id="username"
-                type="text"
+                type="tel"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                autoComplete="username"
+                autoComplete="tel"
                 required
                 className="w-full rounded-lg border border-[#2e2e35] bg-[#111111] px-4 py-3 text-white placeholder-[#4b5563] outline-none transition-colors focus:border-[#00FF66] focus:ring-1 focus:ring-[#00FF66]"
-                placeholder="Ingresa tu usuario"
+                placeholder="3001234567"
               />
             </div>
 
@@ -100,6 +105,11 @@ function Login() {
             </button>
           </div>
         </form>
+        <p className="mt-6 text-center text-sm text-[#6b6b7b]">
+          <Link to="/" className="text-[#9ca3af] hover:text-white">
+            ← Volver a Zyra
+          </Link>
+        </p>
       </div>
     </div>
   );

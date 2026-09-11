@@ -1,203 +1,50 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { MoreVertical, Pencil, Plus, ShieldOff, UserPlus } from 'lucide-react';
+import { Loader2, MoreVertical, Pencil, Plus, ShieldOff, UserPlus } from 'lucide-react';
+import { useAppContext } from '../../estados/AppContext';
+import { getStoredSession } from '../../api/auth';
+import { miembrosService } from '../../api/services';
+import {
+  CATEGORIAS_PERMISOS,
+  buildPermisosPayload,
+  idsPermisosCategoria,
+  mapMiembroFromApi,
+  permisosDefectoPorRol,
+  resolverRolBase,
+} from './permisosConfig';
 
-const CATEGORIAS_PERMISOS = [
-  {
-    id: 'reservas',
-    maestro: { id: 'module_reservations', nombre: 'Módulo de Reservas' },
-    permisos: [
-      {
-        id: 'create_booking',
-        nombre: 'Crear Reserva',
-        descripcion: 'Permite agendar turnos en celdas vacías.',
-      },
-      {
-        id: 'move_reschedule',
-        nombre: 'Mover/Reprogramar Reservas',
-        descripcion: 'Habilita el Drag & Drop para cambiar partidos.',
-      },
-      {
-        id: 'view_daily_income',
-        nombre: 'Ver Ingresos Estimados del Día',
-        descripcion: 'Muestra el desglose financiero rápido de la grilla.',
-      },
-      {
-        id: 'settle_balance',
-        nombre: 'Liquidar Saldo',
-        descripcion: 'Permite registrar el pago final de una reserva en counter.',
-      },
-      {
-        id: 'free_bookings',
-        nombre: 'Ingresar Reservas Gratuitas',
-        descripcion: 'Permite agendar turnos con valor $0 COP (Cortesías/Amigos).',
-      },
-    ],
-  },
-  {
-    id: 'finanzas',
-    maestro: { id: 'module_finance', nombre: 'Módulo Financiero' },
-    permisos: [
-      {
-        id: 'view_cash_panel',
-        nombre: 'Ver Panel de Caja',
-        descripcion: 'Acceso al histórico global de transacciones.',
-      },
-      {
-        id: 'view_zyra_settlements',
-        nombre: 'Ver Liquidaciones Zyra',
-        descripcion: 'Permite ver las transferencias enviadas por la startup.',
-      },
-    ],
-  },
-  {
-    id: 'staff',
-    maestro: { id: 'module_staff', nombre: 'Módulo de Equipo' },
-    permisos: [
-      {
-        id: 'manage_members',
-        nombre: 'Gestionar Miembros',
-        descripcion: 'Permite invitar, editar o suspender otros usuarios.',
-      },
-    ],
-  },
-  {
-    id: 'canchas',
-    maestro: { id: 'module_courts', nombre: 'Módulo de Canchas' },
-    subgrupos: [
-      {
-        id: 'infraestructura',
-        nombre: 'INFRAESTRUCTURA',
-        permisos: [
-          {
-            id: 'add_court',
-            nombre: 'Agregar Cancha',
-            descripcion: 'Permite crear nuevos espacios de juego en el sistema.',
-          },
-          {
-            id: 'modify_court_identity',
-            nombre: 'Modificar Identidad',
-            descripcion: 'Permite cambiar el nombre o detalles de las canchas.',
-          },
-        ],
-      },
-      {
-        id: 'estado_operativo',
-        nombre: 'ESTADO OPERATIVO',
-        permisos: [
-          {
-            id: 'toggle_court_active',
-            nombre: 'Activar / Desactivar Cancha',
-            descripcion: 'Permite habilitar o deshabilitar canchas de la vista pública.',
-          },
-          {
-            id: 'maintenance_mode',
-            nombre: 'Modo Mantenimiento',
-            descripcion: 'Permite bloquear canchas por reparaciones o imprevistos.',
-          },
-        ],
-      },
-      {
-        id: 'comercial_web',
-        nombre: 'COMERCIAL Y WEB',
-        permisos: [
-          {
-            id: 'configure_pricing',
-            nombre: 'Configurar Tarifas y Precios',
-            descripcion: 'Permite modificar los precios por hora y horarios especiales.',
-          },
-          {
-            id: 'configure_web_section',
-            nombre: 'Configurar Sección Web',
-            descripcion: 'Permite personalizar la landing page de reservas de Zyra.',
-          },
-        ],
-      },
-    ],
-  },
-  {
-    id: 'analitica',
-    maestro: { id: 'module_analytics', nombre: 'Módulo de Datos e Inteligencia' },
-    permisos: [
-      {
-        id: 'view_analytics',
-        nombre: 'Ver Análisis y Estadísticas',
-        descripcion: 'Acceso a reportes de ocupación y rendimiento del complejo.',
-      },
-      {
-        id: 'view_activity_log',
-        nombre: 'Ver Registro de Actividad',
-        descripcion: 'Auditoría en tiempo real de qué recepcionista hizo cada acción.',
-      },
-      {
-        id: 'view_booking_history',
-        nombre: 'Ver Historial de Reservas',
-        descripcion: 'Acceso al histórico completo de partidos pasados y cancelados.',
-      },
-    ],
-  },
-];
-
-function obtenerPermisosCategoria(categoria) {
-  if (categoria.subgrupos) {
-    return categoria.subgrupos.flatMap((sg) => sg.permisos);
-  }
-  return categoria.permisos ?? [];
+function obtenerComplejoId(state) {
+  return state.user?.complejos?.[0]?.id ?? getStoredSession()?.user?.complejos?.[0]?.id ?? null;
 }
 
-const TODOS_LOS_PERMISOS = CATEGORIAS_PERMISOS.flatMap(obtenerPermisosCategoria);
+function obtenerTokenSesion() {
+  return getStoredSession()?.token ?? localStorage.getItem('token');
+}
 
-const PERMISOS_POR_ROL = {
-  Administrador: TODOS_LOS_PERMISOS.map((p) => p.id),
-  Recepcionista: ['create_booking'],
+const FORMULARIO_INICIAL = {
+  nombre: '',
+  correo: '',
+  rol: 'Recepcionista',
+  permisosIds: [],
+  notaInterna: '',
 };
 
-function permisosDefectoPorRol(rol) {
-  return new Set(PERMISOS_POR_ROL[rol] ?? PERMISOS_POR_ROL.Recepcionista);
+function crearFormularioInvitacion() {
+  return {
+    ...FORMULARIO_INICIAL,
+    permisosIds: [...permisosDefectoPorRol('Recepcionista')],
+  };
 }
 
-function idsPermisosCategoria(categoria) {
-  return obtenerPermisosCategoria(categoria).map((p) => p.id);
+function crearFormularioDesdeMiembro(miembro) {
+  return {
+    nombre: miembro.nombre ?? '',
+    correo: miembro.correo ?? '',
+    rol: miembro.rol ?? 'Recepcionista',
+    permisosIds: [...(miembro.permissions ?? [])],
+    notaInterna: miembro.notaInterna ?? '',
+  };
 }
-
-const MIEMBROS_INICIAL = [
-  {
-    id: 1,
-    nombre: 'Andrea Gómez',
-    correo: 'andrea.gomez@complejo.co',
-    rol: 'Administrador',
-    estado: 'Activo',
-    reciente: false,
-    permissions: TODOS_LOS_PERMISOS.map((p) => p.id),
-  },
-  {
-    id: 2,
-    nombre: 'Carlos Ruiz',
-    correo: 'carlos.ruiz@complejo.co',
-    rol: 'Recepcionista',
-    estado: 'Activo',
-    reciente: false,
-    permissions: ['create_booking'],
-  },
-  {
-    id: 3,
-    nombre: 'Laura Méndez',
-    correo: 'laura.mendez@complejo.co',
-    rol: 'Recepcionista',
-    estado: 'Activo',
-    reciente: false,
-    permissions: ['create_booking', 'move_reschedule'],
-  },
-  {
-    id: 4,
-    nombre: 'Diego Vargas',
-    correo: 'diego.vargas@complejo.co',
-    rol: 'Administrador',
-    estado: 'Activo',
-    reciente: false,
-    permissions: ['create_booking', 'view_cash_panel'],
-  },
-];
 
 const COLUMNAS_TABLA =
   'grid grid-cols-[1.2fr_1.4fr_0.9fr_0.7fr_0.35fr] gap-4 px-4 items-center';
@@ -481,7 +328,7 @@ function PanelPermisosMiembro({ permisos, onToggleMaestro, onTogglePermiso }) {
   );
 }
 
-function PanelNotasMiembro({ nota, onChangeNota, onGuardarNota }) {
+function PanelNotasMiembro({ nota, onChangeNota }) {
   return (
     <div className="flex w-full flex-col items-start">
       <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
@@ -489,6 +336,7 @@ function PanelNotasMiembro({ nota, onChangeNota, onGuardarNota }) {
       </h3>
       <p className="mt-1.5 mb-4 text-[10px] leading-snug text-slate-500">
         Notas privadas visibles solo para administradores sobre el desempeño del staff.
+        Se guardan junto con el resto de cambios al pulsar &quot;Guardar cambios&quot;.
       </p>
       <textarea
         value={nota}
@@ -496,13 +344,6 @@ function PanelNotasMiembro({ nota, onChangeNota, onGuardarNota }) {
         placeholder="Escribe observaciones sobre desempeño, incidencias o acuerdos internos..."
         className="h-[150px] w-full resize-none rounded-lg border border-slate-800 bg-slate-900 p-3 text-xs text-white placeholder:text-slate-600 focus:border-slate-600 focus:outline-none"
       />
-      <button
-        type="button"
-        onClick={onGuardarNota}
-        className="mt-3 rounded-lg border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-white/[0.1]"
-      >
-        Guardar nota interna
-      </button>
     </div>
   );
 }
@@ -662,11 +503,16 @@ function ModalInvitarMiembro({
 }) {
   const esEdicion = miembroSeleccionado != null;
   const [activeTab, setActiveTab] = useState('general');
-  const [notaInterna, setNotaInterna] = useState('');
-  const [nombre, setNombre] = useState('');
-  const [correo, setCorreo] = useState('');
-  const [rol, setRol] = useState('Recepcionista');
-  const [permisos, setPermisos] = useState(() => permisosDefectoPorRol('Recepcionista'));
+  const [formulario, setFormulario] = useState(FORMULARIO_INICIAL);
+  const [enviando, setEnviando] = useState(false);
+  const [errorEnvio, setErrorEnvio] = useState('');
+
+  const permisos = new Set(formulario.permisosIds);
+  const { nombre, correo, rol, notaInterna } = formulario;
+
+  const actualizarFormulario = useCallback((cambios) => {
+    setFormulario((prev) => ({ ...prev, ...cambios }));
+  }, []);
 
   useEffect(() => {
     if (!abierto) return;
@@ -683,28 +529,27 @@ function ModalInvitarMiembro({
     if (!abierto) return;
 
     setActiveTab('general');
+    setEnviando(false);
+    setErrorEnvio('');
 
     if (miembroSeleccionado) {
-      setNombre(miembroSeleccionado.nombre);
-      setCorreo(miembroSeleccionado.correo);
-      setRol(miembroSeleccionado.rol);
-      setPermisos(new Set(miembroSeleccionado.permissions ?? []));
-      setNotaInterna(miembroSeleccionado.notaInterna ?? '');
+      setFormulario(crearFormularioDesdeMiembro(miembroSeleccionado));
       return;
     }
 
-    setNombre('');
-    setCorreo('');
-    setRol('Recepcionista');
-    setPermisos(permisosDefectoPorRol('Recepcionista'));
-    setNotaInterna('');
+    setFormulario(crearFormularioInvitacion());
   }, [abierto, miembroSeleccionado]);
 
   const handleCambioRol = (nuevoRol) => {
-    setRol(nuevoRol);
     if (!esEdicion) {
-      setPermisos(permisosDefectoPorRol(nuevoRol));
+      actualizarFormulario({
+        rol: nuevoRol,
+        permisosIds: [...permisosDefectoPorRol(nuevoRol)],
+      });
+      return;
     }
+
+    actualizarFormulario({ rol: nuevoRol });
   };
 
   const handleCerrarSesiones = () => {
@@ -716,22 +561,15 @@ function ModalInvitarMiembro({
     onSuspender(miembroSeleccionado.id);
   };
 
-  const handleGuardarNota = () => {
-    console.log('[Miembros] Guardar nota interna:', {
-      miembro: miembroSeleccionado?.correo,
-      nota: notaInterna,
-    });
-  };
-
   const togglePermiso = (permisoId) => {
-    setPermisos((prev) => {
-      const next = new Set(prev);
+    setFormulario((prev) => {
+      const next = new Set(prev.permisosIds);
       if (next.has(permisoId)) {
         next.delete(permisoId);
       } else {
         next.add(permisoId);
       }
-      return next;
+      return { ...prev, permisosIds: [...next] };
     });
   };
 
@@ -739,44 +577,56 @@ function ModalInvitarMiembro({
     const ids = idsPermisosCategoria(categoria);
     const todosActivos = ids.every((id) => permisos.has(id));
 
-    setPermisos((prev) => {
-      const next = new Set(prev);
+    setFormulario((prev) => {
+      const next = new Set(prev.permisosIds);
       if (todosActivos) {
         ids.forEach((id) => next.delete(id));
       } else {
         ids.forEach((id) => next.add(id));
       }
-      return next;
+      return { ...prev, permisosIds: [...next] };
     });
   };
 
   if (!abierto) return null;
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!nombre.trim() || !correo.trim()) return;
 
-    const permissions = TODOS_LOS_PERMISOS.filter((p) => permisos.has(p.id)).map(
-      (p) => p.id,
-    );
+    const permisosPayload = buildPermisosPayload(permisos);
+    const rolBase = resolverRolBase(rol, permisos);
 
-    const payload = {
-      nombre: nombre.trim(),
-      correo: correo.trim(),
-      rol,
-      permissions,
-      estado: miembroSeleccionado?.estado ?? 'Activo',
-      notaInterna: notaInterna.trim(),
-    };
+    setEnviando(true);
+    setErrorEnvio('');
 
-    if (esEdicion) {
-      console.log('[Miembros] Actualización de miembro:', { id: miembroSeleccionado.id, ...payload });
-      onActualizar(miembroSeleccionado.id, payload);
-      return;
+    try {
+      if (esEdicion) {
+        await onActualizar(miembroSeleccionado.id, {
+          nombre: nombre.trim(),
+          correo: correo.trim(),
+          rolBase,
+          permisos: permisosPayload,
+          notaInterna: notaInterna.trim(),
+        });
+        return;
+      }
+
+      await onEnviar({
+        nombre: nombre.trim(),
+        correo: correo.trim(),
+        rolBase,
+        permisos: permisosPayload,
+      });
+    } catch (error) {
+      const mensaje =
+        error.response?.data?.message ||
+        error.message ||
+        (esEdicion ? 'No se pudieron guardar los cambios' : 'No se pudo enviar la invitación');
+      setErrorEnvio(mensaje);
+    } finally {
+      setEnviando(false);
     }
-
-    console.log('[Miembros] Nueva invitación con permisos:', payload);
-    onEnviar(payload);
   };
 
   const renderContenidoEdicion = () => {
@@ -785,9 +635,9 @@ function ModalInvitarMiembro({
         return (
           <CamposGeneralesMiembro
             nombre={nombre}
-            setNombre={setNombre}
+            setNombre={(value) => actualizarFormulario({ nombre: value })}
             correo={correo}
-            setCorreo={setCorreo}
+            setCorreo={(value) => actualizarFormulario({ correo: value })}
             rol={rol}
             onCambioRol={handleCambioRol}
             idPrefix="editar"
@@ -805,8 +655,7 @@ function ModalInvitarMiembro({
         return (
           <PanelNotasMiembro
             nota={notaInterna}
-            onChangeNota={setNotaInterna}
-            onGuardarNota={handleGuardarNota}
+            onChangeNota={(value) => actualizarFormulario({ notaInterna: value })}
           />
         );
       case 'seguridad':
@@ -877,9 +726,9 @@ function ModalInvitarMiembro({
                 <div className={CLASE_AREA_SCROLL_MODAL}>
                   <CamposGeneralesMiembro
                     nombre={nombre}
-                    setNombre={setNombre}
+                    setNombre={(value) => actualizarFormulario({ nombre: value })}
                     correo={correo}
-                    setCorreo={setCorreo}
+                    setCorreo={(value) => actualizarFormulario({ correo: value })}
                     rol={rol}
                     onCambioRol={handleCambioRol}
                     idPrefix="invitar"
@@ -913,18 +762,30 @@ function ModalInvitarMiembro({
           )}
 
           <div className="flex shrink-0 items-center justify-end gap-3 pt-5 mt-5 border-t border-white/5 w-full">
+            {errorEnvio && (
+              <p className="mr-auto text-[11px] text-red-400">{errorEnvio}</p>
+            )}
             <button
               type="button"
               onClick={onCerrar}
-              className="px-4 py-2 text-xs font-medium text-slate-400 hover:text-slate-300 transition-colors"
+              disabled={enviando}
+              className="px-4 py-2 text-xs font-medium text-slate-400 hover:text-slate-300 transition-colors disabled:opacity-50"
             >
               Cancelar
             </button>
             <button
               type="submit"
-              className="px-4 py-2 rounded-lg text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-500 transition-colors"
+              disabled={enviando}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-500 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              {esEdicion ? 'Guardar cambios' : 'Enviar Invitación'}
+              {enviando && <Loader2 size={14} className="animate-spin" />}
+              {esEdicion
+                ? enviando
+                  ? 'Guardando...'
+                  : 'Guardar cambios'
+                : enviando
+                  ? 'Enviando...'
+                  : 'Enviar Invitación'}
             </button>
           </div>
         </form>
@@ -935,11 +796,58 @@ function ModalInvitarMiembro({
 }
 
 function Members() {
-  const [miembros, setMiembros] = useState(MIEMBROS_INICIAL);
+  const { state } = useAppContext();
+  const complejoId = obtenerComplejoId(state);
+  const [miembros, setMiembros] = useState([]);
+  const [cargandoMiembros, setCargandoMiembros] = useState(true);
+  const [errorMiembros, setErrorMiembros] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [selectedMember, setSelectedMember] = useState(null);
   const [menuAbiertoId, setMenuAbiertoId] = useState(null);
-  const nextIdRef = useRef(MIEMBROS_INICIAL.length + 1);
+
+  const cargarMiembros = useCallback(async () => {
+    const token = obtenerTokenSesion();
+
+    if (!complejoId) {
+      setMiembros([]);
+      setErrorMiembros('No se encontró el complejo activo.');
+      setCargandoMiembros(false);
+      return;
+    }
+
+    if (!token) {
+      setMiembros([]);
+      setErrorMiembros('Sesión expirada. Vuelve a iniciar sesión.');
+      setCargandoMiembros(false);
+      return;
+    }
+
+    setCargandoMiembros(true);
+    setErrorMiembros('');
+
+    try {
+      const response = await miembrosService.listar(complejoId, token);
+
+      if (!response.success) {
+        throw new Error(response.message || 'No se pudieron cargar los miembros');
+      }
+
+      setMiembros((response.data ?? []).map(mapMiembroFromApi));
+    } catch (error) {
+      const mensaje =
+        error.response?.data?.message ||
+        error.message ||
+        'No se pudieron cargar los miembros';
+      setErrorMiembros(mensaje);
+      setMiembros([]);
+    } finally {
+      setCargandoMiembros(false);
+    }
+  }, [complejoId]);
+
+  useEffect(() => {
+    cargarMiembros();
+  }, [cargarMiembros]);
 
   const abrirModalInvitar = useCallback(() => {
     setSelectedMember(null);
@@ -989,44 +897,56 @@ function Members() {
     [cerrarMenu, cerrarModal],
   );
 
-  const handleEnviarInvitacion = useCallback(({ nombre, correo, rol, permissions }) => {
-    const nuevoId = nextIdRef.current;
-    nextIdRef.current += 1;
+  const handleEnviarInvitacion = useCallback(async ({ nombre, correo, rolBase, permisos }) => {
+    const token = obtenerTokenSesion();
 
-    setMiembros((prev) => [
-      ...prev,
+    if (!complejoId) {
+      throw new Error('No se encontró el complejo activo');
+    }
+
+    if (!token) {
+      throw new Error('Sesión expirada. Vuelve a iniciar sesión.');
+    }
+
+    const response = await miembrosService.invitar(
       {
-        id: nuevoId,
+        complejoId,
         nombre,
         correo,
-        rol,
-        permissions,
-        estado: 'Activo',
-        reciente: true,
+        rolBase,
+        permisos,
       },
-    ]);
-    cerrarModal();
-  }, [cerrarModal]);
-
-  const handleActualizarMiembro = useCallback((id, { nombre, correo, rol, permissions, estado, notaInterna }) => {
-    setMiembros((prev) =>
-      prev.map((m) =>
-        m.id === id
-          ? {
-              ...m,
-              nombre,
-              correo,
-              rol,
-              permissions,
-              estado,
-              notaInterna,
-              reciente: false,
-            }
-          : m,
-      ),
+      token,
     );
+
+    if (!response.success) {
+      throw new Error(response.message || 'No se pudo enviar la invitación');
+    }
+
+    await cargarMiembros();
     cerrarModal();
-  }, [cerrarModal]);
+  }, [complejoId, cargarMiembros, cerrarModal]);
+
+  const handleActualizarMiembro = useCallback(async (id, { nombre, correo, rolBase, permisos, notaInterna }) => {
+    const token = obtenerTokenSesion();
+
+    if (!token) {
+      throw new Error('Sesión expirada. Vuelve a iniciar sesión.');
+    }
+
+    const response = await miembrosService.actualizar(
+      id,
+      { nombre, correo, rolBase, permisos },
+      token,
+    );
+
+    if (!response.success) {
+      throw new Error(response.message || 'No se pudieron guardar los cambios');
+    }
+
+    await cargarMiembros();
+    cerrarModal();
+  }, [cargarMiembros, cerrarModal]);
 
   const activos = miembros.filter((m) => m.estado === 'Activo').length;
 
@@ -1074,7 +994,28 @@ function Members() {
               </span>
             </div>
 
-            {miembros.map((miembro) => (
+            {cargandoMiembros ? (
+              <div className="flex items-center justify-center gap-2 py-10 text-xs text-zinc-500">
+                <Loader2 size={16} className="animate-spin" />
+                Cargando miembros...
+              </div>
+            ) : errorMiembros ? (
+              <div className="py-10 px-4 text-center">
+                <p className="text-xs text-red-400">{errorMiembros}</p>
+                <button
+                  type="button"
+                  onClick={cargarMiembros}
+                  className="mt-3 text-xs text-emerald-400 hover:text-emerald-300 transition-colors"
+                >
+                  Reintentar
+                </button>
+              </div>
+            ) : miembros.length === 0 ? (
+              <div className="py-10 px-4 text-center text-xs text-zinc-500">
+                Aún no hay miembros en el staff. Invita al primero.
+              </div>
+            ) : (
+              miembros.map((miembro) => (
               <div
                 key={miembro.id}
                 className={`${COLUMNAS_TABLA} py-3 border-b border-white/5 last:border-b-0 hover:bg-white/[0.02] transition-colors duration-200`}
@@ -1102,7 +1043,8 @@ function Members() {
                   onSuspender={() => handleSuspender(miembro.id)}
                 />
               </div>
-            ))}
+              ))
+            )}
           </div>
 
           <p className="text-[10px] text-zinc-600 mt-4 text-center">

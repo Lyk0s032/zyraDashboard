@@ -63,19 +63,69 @@ export function calcularPosicionFlotante(anchorRect, anchoBloque, altoBloque) {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
 
+  // Calcular espacio disponible en cada dirección desde el anchor
+  const espacioArriba = anchorRect.top - MARGEN;
+  const espacioAbajo = vh - anchorRect.bottom - MARGEN;
+  const espacioIzquierda = anchorRect.left - MARGEN;
+  const espacioDerecha = vw - anchorRect.right - MARGEN;
+
+  // Lista de candidatos con score de cuánto espacio tienen
   const candidatos = [
-    { top: anchorRect.top, left: anchorRect.right + GAP },
-    { top: anchorRect.top, left: anchorRect.left - anchoBloque - GAP },
-    { top: anchorRect.bottom + GAP, left: anchorRect.left },
-    {
-      top: anchorRect.top,
-      left: anchorRect.left + anchorRect.width / 2 - anchoBloque / 2,
+    // A la derecha del anchor
+    { 
+      top: anchorRect.top, 
+      left: anchorRect.right + GAP,
+      espacioV: Math.max(espacioArriba, espacioAbajo),
+      espacioH: espacioDerecha - GAP,
+      prioridad: 1
+    },
+    // A la izquierda del anchor
+    { 
+      top: anchorRect.top, 
+      left: anchorRect.left - anchoBloque - GAP,
+      espacioV: Math.max(espacioArriba, espacioAbajo),
+      espacioH: espacioIzquierda - GAP,
+      prioridad: 2
+    },
+    // Debajo del anchor
+    { 
+      top: anchorRect.bottom + GAP, 
+      left: anchorRect.left,
+      espacioV: espacioAbajo - GAP,
+      espacioH: Math.max(espacioIzquierda, espacioDerecha),
+      prioridad: 3
+    },
+    // Arriba del anchor
+    { 
+      top: anchorRect.top - altoBloque - GAP, 
+      left: anchorRect.left,
+      espacioV: espacioArriba - GAP,
+      espacioH: Math.max(espacioIzquierda, espacioDerecha),
+      prioridad: 4
     },
   ];
 
+  // Intentar cada candidato
   for (const c of candidatos) {
-    const top = clamp(c.top, MARGEN, vh - altoBloque - MARGEN);
-    const left = clamp(c.left, MARGEN, vw - anchoBloque - MARGEN);
+    // Ajustar top para que no se salga por arriba o abajo
+    let top = c.top;
+    if (top + altoBloque > vh - MARGEN) {
+      top = vh - altoBloque - MARGEN;
+    }
+    if (top < MARGEN) {
+      top = MARGEN;
+    }
+
+    // Ajustar left para que no se salga por izquierda o derecha
+    let left = c.left;
+    if (left + anchoBloque > vw - MARGEN) {
+      left = vw - anchoBloque - MARGEN;
+    }
+    if (left < MARGEN) {
+      left = MARGEN;
+    }
+
+    // Verificar si cabe completamente en esta posición
     if (
       top >= MARGEN &&
       left >= MARGEN &&
@@ -86,10 +136,15 @@ export function calcularPosicionFlotante(anchorRect, anchoBloque, altoBloque) {
     }
   }
 
-  return {
-    top: clamp((vh - altoBloque) / 2, MARGEN, vh - altoBloque - MARGEN),
-    left: clamp((vw - anchoBloque) / 2, MARGEN, vw - anchoBloque - MARGEN),
-  };
+  // FALLBACK: anclar arriba y alinear horizontalmente con la celda origen
+  const topFinal = MARGEN;
+  const leftFinal = clamp(
+    anchorRect.left + anchorRect.width / 2 - anchoBloque / 2,
+    MARGEN,
+    vw - anchoBloque - MARGEN,
+  );
+
+  return { top: topFinal, left: leftFinal };
 }
 
 export function calcularTransformDesdeAncla(anchorRect, posicion, anchoContenedor, altoContenedor) {

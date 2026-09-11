@@ -1,0 +1,25 @@
+{
+  "name": "Zyra Dashboard",
+  "short_name": "Zyra",
+  "description": "Panel de gestión deportiva Zyra",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#09090b",
+  "background_color": "#09090b",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

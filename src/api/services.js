@@ -301,11 +301,92 @@ export const reservasService = {
   }
 };
 
+export const dashboardService = {
+  /**
+   * GET /api/dashboard/init?complejo_id=X&fecha=YYYY-MM-DD
+   * Trae canchas, reservas del día y métricas del complejo
+   */
+  init: async (complejoId, token, fecha) => {
+    const params = new URLSearchParams({ complejo_id: complejoId });
+    if (fecha) params.append('fecha', fecha);
+    const response = await axiosInstance.get(`/api/dashboard/init?${params.toString()}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    return response.data;
+  },
+
+  /**
+   * GET /api/dashboard/:complejoId/:canchaId?fecha=YYYY-MM-DD
+   * Trae el detalle de una cancha: info + reservas del día + precios
+   */
+  getCanchaDetalle: async (complejoId, canchaId, token, fecha) => {
+    const params = fecha ? `?fecha=${fecha}` : '';
+    const response = await axiosInstance.get(
+      `/api/dashboard/${complejoId}/${canchaId}${params}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    return response.data;
+  }
+};
+
+export const miembrosService = {
+  listar: async (complejoId, token) => {
+    const response = await axiosInstance.get('/api/complejos/miembros', {
+      params: { complejoId },
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return response.data;
+  },
+
+  invitar: async (payload, token) => {
+    const response = await axiosInstance.post(
+      '/api/complejos/miembros/invitar',
+      payload,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    return response.data;
+  },
+
+  actualizar: async (miembroId, payload, token) => {
+    const response = await axiosInstance.put(
+      `/api/complejos/miembros/${miembroId}`,
+      payload,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    return response.data;
+  },
+};
+
+export const finanzasService = {
+  /**
+   * GET /api/complejos/:complejoId/finanzas/resumen
+   */
+  obtenerResumen: async (complejoId, token, filtros = {}) => {
+    const params = new URLSearchParams();
+    if (filtros.periodo) params.append('periodo', filtros.periodo);
+    if (filtros.fecha_desde) params.append('fecha_desde', filtros.fecha_desde);
+    if (filtros.fecha_hasta) params.append('fecha_hasta', filtros.fecha_hasta);
+    if (filtros.cancha_id) params.append('cancha_id', filtros.cancha_id);
+    if (filtros.deporte_clave) params.append('deporte_clave', filtros.deporte_clave);
+    if (filtros.sport_id) params.append('sport_id', filtros.sport_id);
+
+    const query = params.toString();
+    const response = await axiosInstance.get(
+      `/api/complejos/${complejoId}/finanzas/resumen${query ? `?${query}` : ''}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    return response.data;
+  },
+};
+
 export default {
   complejos: complejosService,
   horarios: horariosService,
   canchas: canchasService,
   precios: preciosCanchaService,
   excepciones: excepcionesService,
-  reservas: reservasService
+  reservas: reservasService,
+  dashboard: dashboardService,
+  miembros: miembrosService,
+  finanzas: finanzasService,
 };
