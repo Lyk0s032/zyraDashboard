@@ -11,7 +11,7 @@ function Privacidad() {
     <div className="landing-zyra min-h-dvh bg-[#050505] text-white antialiased">
       <header className="border-b border-white/5">
         <div className="mx-auto flex h-14 max-w-3xl items-center justify-between px-4 sm:px-6">
-          <Link to="/" className="landing-display text-xl font-bold tracking-tight">
+          <Link to="/" className="landing-display text-xl font-bold tracking-tight text-white">
             Zyra
           </Link>
           <Link to="/" className="text-sm text-zinc-400 hover:text-white">
@@ -21,7 +21,7 @@ function Privacidad() {
       </header>
 
       <main className="mx-auto max-w-3xl px-4 py-12 sm:px-6 sm:py-16">
-        <h1 className="landing-display text-3xl font-bold tracking-tight sm:text-4xl">
+        <h1 className="landing-display text-3xl font-bold tracking-tight text-white sm:text-4xl">
           Política de Privacidad
         </h1>
         <p className="mt-3 text-sm text-zinc-500">Última actualización: marzo 2026</p>

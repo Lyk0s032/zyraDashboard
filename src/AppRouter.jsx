@@ -24,10 +24,12 @@ function AppLayout() {
     location.pathname === '/billing' ||
     location.pathname === '/web-config';
 
+  const hideDebugger = PUBLIC_SHELL_PATHS.includes(location.pathname);
+
   return (
     <>
       {!hideNavbar && <Navbar />}
-      <TokenDebugger />
+      {!hideDebugger && <TokenDebugger />}
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/privacidad" element={<Privacidad />} />

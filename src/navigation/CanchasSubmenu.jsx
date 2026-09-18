@@ -466,7 +466,7 @@ function CanchasSubmenu({
       e.preventDefault();
       cancelarEdicion();
     }
-  };
+  }; 
 
   const { isLight } = useAccessibility();
 

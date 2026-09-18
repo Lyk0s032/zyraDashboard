@@ -52,7 +52,7 @@ export default function HistorialCliente({ cliente, estadisticas, historial, car
         <div className="flex items-start justify-between">
           <div className="min-w-0 flex-1">
             <p className="text-[10px] font-medium uppercase tracking-wider text-slate-500">
-              Clienteeee {cliente.es_cliente_registrado ? '• Registrado' : '• Nuevo'}
+              Cliente {cliente.es_cliente_registrado ? '• Registrado' : '• Nuevo'}
             </p>
             <p className="mt-1 truncate text-sm font-semibold text-white">{cliente.nombre}</p>
             <p className="mt-0.5 text-xs text-slate-400">{cliente.telefono}</p>

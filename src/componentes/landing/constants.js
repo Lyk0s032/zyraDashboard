@@ -1,6 +1,6 @@
 /** Enlace de descarga del APK (build EAS / Expo). */
 export const APK_URL =
-  'https://expo.dev/artifacts/eas/sqfQxzTks4j0RJBWGnOfXK2J0Pj8IIt7iF_yxpKwWJo.apk';
+  'https://expo.dev/artifacts/eas/bnOsA2oOF6ipiXEZlwewJ8glSmlhXVrNE9wM86jsrFA.apk';
 
 /** WhatsApp de contacto para complejos (formato internacional sin +) */
 export const WHATSAPP_COMPLEJOS = '573001234567';

@@ -365,6 +365,13 @@ code {
   font-family: var(--landing-display);
 }
 
+.landing-zyra h1,
+.landing-zyra h2,
+.landing-zyra h3 {
+  color: #ffffff;
+  margin: 0;
+}
+
 .landing-zyra section[id] {
   scroll-margin-top: 4.5rem;
 }

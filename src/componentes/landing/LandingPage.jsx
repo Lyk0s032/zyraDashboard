@@ -96,7 +96,7 @@ function LandingPage() {
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4 sm:px-6">
           <a
             href="#inicio"
-            className="landing-display text-xl font-bold tracking-tight"
+            className="landing-display text-xl font-bold tracking-tight text-white"
             onClick={(e) => {
               e.preventDefault();
               document.getElementById('inicio')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -157,7 +157,7 @@ function LandingPage() {
         <div className="relative mx-auto grid w-full max-w-6xl items-center gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:gap-12">
           <div className="text-center lg:text-left">
             <motion.h1
-              className="landing-display text-[clamp(3.5rem,14vw,6.5rem)] font-bold leading-[0.9] tracking-tight"
+              className="landing-display text-[clamp(3.5rem,14vw,6.5rem)] font-bold leading-[0.9] tracking-tight text-white"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
@@ -206,7 +206,7 @@ function LandingPage() {
         <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24">
           <FadeIn>
             <p className="text-xs font-medium uppercase tracking-[0.2em] text-zinc-500">Ecosistema</p>
-            <h2 className="landing-display mt-2 text-3xl font-bold tracking-tight sm:text-4xl">
+            <h2 className="landing-display mt-2 text-3xl font-bold tracking-tight text-white sm:text-4xl">
               Tres mundos. Una app.
             </h2>
           </FadeIn>
@@ -222,7 +222,7 @@ function LandingPage() {
             </FadeIn>
             <FadeIn className="order-1 lg:order-2" delay={0.08}>
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#00FF66]">Torneos</p>
-              <h3 className="landing-display mt-3 text-2xl font-bold sm:text-3xl">
+              <h3 className="landing-display mt-3 text-2xl font-bold text-white sm:text-3xl">
                 Marcador en vivo con reglas reales de vóley
               </h3>
               <p className="mt-4 max-w-md text-[15px] leading-relaxed text-zinc-400">
@@ -249,7 +249,7 @@ function LandingPage() {
           <div className="mx-auto grid max-w-6xl items-center gap-10 px-4 py-16 sm:px-6 lg:grid-cols-2 lg:py-20">
             <FadeIn>
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-300">Clubes</p>
-              <h3 className="landing-display mt-3 text-2xl font-bold sm:text-3xl">
+              <h3 className="landing-display mt-3 text-2xl font-bold text-white sm:text-3xl">
                 Perfil, entrenamientos y RSVP
               </h3>
               <p className="mt-4 max-w-md text-[15px] leading-relaxed text-zinc-400">
@@ -286,7 +286,7 @@ function LandingPage() {
             </FadeIn>
             <FadeIn className="order-1 lg:order-2" delay={0.08}>
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#00B488]">Complejos</p>
-              <h3 className="landing-display mt-3 text-2xl font-bold sm:text-3xl">
+              <h3 className="landing-display mt-3 text-2xl font-bold text-white sm:text-3xl">
                 Dashboard de reservas para tu cancha
               </h3>
               <p className="mt-4 max-w-md text-[15px] leading-relaxed text-zinc-400">
@@ -322,7 +322,7 @@ function LandingPage() {
         <div className="mx-auto grid max-w-6xl items-center gap-12 px-4 py-20 sm:px-6 lg:grid-cols-[0.9fr_1.1fr] lg:py-28">
           <FadeIn>
             <p className="text-xs font-medium uppercase tracking-[0.2em] text-[#00FF66]">Función destacada</p>
-            <h2 className="landing-display mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
+            <h2 className="landing-display mt-3 text-3xl font-bold tracking-tight text-white sm:text-4xl">
               Mapa de calor y rotación en vivo
             </h2>
             <p className="mt-5 max-w-md text-[15px] leading-relaxed text-zinc-400">
@@ -348,7 +348,7 @@ function LandingPage() {
             }}
           />
           <FadeIn>
-            <h2 className="landing-display text-3xl font-bold tracking-tight sm:text-4xl">
+            <h2 className="landing-display text-3xl font-bold tracking-tight text-white sm:text-4xl">
               Lleva Zyra a tu cancha
             </h2>
             <p className="mx-auto mt-3 max-w-sm text-zinc-400">
@@ -366,7 +366,7 @@ function LandingPage() {
       <footer className="border-t border-white/5 bg-[#050505]">
         <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-10 sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <div>
-            <p className="landing-display text-lg font-bold">Zyra</p>
+            <p className="landing-display text-lg font-bold text-white">Zyra</p>
             <p className="mt-1 text-xs text-zinc-600">Ecosistema deportivo</p>
           </div>
           <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-zinc-400">

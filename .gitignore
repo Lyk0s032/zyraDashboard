@@ -26,3 +26,7 @@ dist-ssr
 .env
 tmp-landing-shots/
 
+# Simulación Google — solo local, no subir al repo
+src/componentes/SimulacionGoogle.jsx
+public/simulacion/
+
